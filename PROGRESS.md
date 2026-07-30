@@ -478,3 +478,10 @@ $ python smoke_test_crud.py                              → 🎉 ALL CRUD SMOKE
 - [x] npm run lint → 0/0 on .ts files; npm run build → 1051 modules, dist bundle 661.92 kB shipped (index-DncpmHyQ.js)
 - [x] Ad-hoc verifier 15/15 PASS (since deleted): column widths, category tile presence + colour usage, SHAPE.tile reuse, product tile style preserved, modal size, bundle freshness, server responses
 - [x] Browser visual verification at :5173 — popup shows 3 columns; "All" filled teal/green; Coffee/Tea/Pastries/Sandwiches tiles show distinct border colours (brown/green/orange/blue); product tiles still colour-coded by category; Cancel/Send buttons present at footer
+
+### M18b — Repo hygiene (interim)
+- [x] Stashed half-finished M19 WIP (kitchen/bar station split) as `wip/m19-kitchen-bar-stations` — pickup when real café workflow actually needs station separation
+- [x] Untracked `.hermes/plans/2026-07-28-unified-grid-redesign.md` from git (file preserved on disk as local reference; M6 is already shipped)
+- [x] Added `.hermes/` to `.gitignore` so future plans never re-enter the repo
+- [x] Frontend lint + tsc + build pass 0/0 on the clean M18 main; live service still serving M18 (PID 366569)
+- [x] Decision: next real milestone is end-to-end **real-world smoke test** (3 terminals × 10 customers) — feature work paused until we know what real usage breaks

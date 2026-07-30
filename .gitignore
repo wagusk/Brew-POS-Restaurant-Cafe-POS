@@ -25,3 +25,6 @@ Thumbs.db
 # Brew-POS
 .frontend-hash
 *.log
+
+# Hermes planning artifacts (local-only)
+.hermes/
