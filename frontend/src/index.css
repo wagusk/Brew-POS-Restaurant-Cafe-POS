@@ -1,0 +1,41 @@
+/* ── Brew-POS unified grid system ──────────────────────────────────────
+   White surfaces, 1px borders, 12px radii. Single source of truth lives
+   in theme/index.ts; this file applies the values that CSS can't read
+   from the MUI theme (page background, scrollbars, helpers).
+*/
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  font-family: 'Inter', 'Roboto', sans-serif;
+  background: #f5f7fa;
+  color: #1a1f2b;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+* { box-sizing: border-box; }
+
+button, [role="button"] {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Touch-friendly vertical scroll helper */
+.scroll-y {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb {
+  background: rgba(26, 31, 43, 0.18);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(26, 31, 43, 0.28); }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* Token-driven utility classes — read from theme where possible,
+   but a few low-level surfaces need a stable class. */
+.bp-surface { background: #ffffff; border: 1px solid #e3e7ec; border-radius: 12px; }
+.bp-surface-muted { background: #fafbfd; border: 1px solid #e3e7ec; border-radius: 12px; }

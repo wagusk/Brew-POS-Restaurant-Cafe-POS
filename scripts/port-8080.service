@@ -1,0 +1,19 @@
+[Unit]
+Description=Port 8080 placeholder HTTP service (swap ExecStart for real app)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=BREWPOS_PORT_8080=8080
+Environment=BREWPOS_PORT_8080_ROOT=/home/lenovo/Hermes-Project/Brew-POS
+Environment=BREWPOS_PORT_8080_LOG=/home/lenovo/Hermes-Project/Brew-POS/.hermes/port-8080.log
+ExecStart=/home/lenovo/Hermes-Project/Brew-POS/scripts/port-8080-server.sh
+Restart=always
+RestartSec=3
+StandardOutput=append:/home/lenovo/Hermes-Project/Brew-POS/.hermes/port-8080.log
+StandardError=append:/home/lenovo/Hermes-Project/Brew-POS/.hermes/port-8080.log
+
+[Install]
+WantedBy=default.target
