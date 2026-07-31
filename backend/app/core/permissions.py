@@ -10,18 +10,21 @@ PERMISSIONS = (
     "waiter.view",
     "kitchen.view",
     "bar.view",
+    "menu.view",  # Master role always has access to menu page
     "admin.view",
     "admin.manage_menu",
     "admin.manage_tables",
     "admin.manage_users",
     "admin.manage_settings",
+    "admin.reports",
 )
 
 ROLE_PERMISSIONS: dict[str, set[str]] = {
     "admin": set(PERMISSIONS),
-    "cashier": {"dashboard.view", "cashier.view"},
-    "waiter": {"dashboard.view", "waiter.view"},
-    "kitchen": {"dashboard.view", "kitchen.view", "bar.view"},
+    "master": set(PERMISSIONS),  # Master has all permissions including menu access
+    "cashier": {"dashboard.view", "cashier.view", "menu.view"},
+    "waiter": {"dashboard.view", "waiter.view", "menu.view"},
+    "kitchen": {"dashboard.view", "kitchen.view", "bar.view", "menu.view"},
 }
 
 
@@ -38,5 +41,5 @@ def normalise_permissions(role: str, permissions: Iterable[str] | None) -> list[
 
 
 def can(user, permission: str) -> bool:
-    """Admin remains an emergency full-access role; others use persisted grants."""
-    return user.role == "admin" or permission in (user.permissions or [])
+    """Admin and Master have emergency full-access role; others use persisted grants."""
+    return user.role in ("admin", "master") or permission in (user.permissions or [])

@@ -16,7 +16,7 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(80))
     pin: Mapped[str] = mapped_column(String(120))  # bcrypt hash
-    role: Mapped[str] = mapped_column(String(20))  # admin | cashier | waiter | kitchen
+    role: Mapped[str] = mapped_column(String(20))  # admin | master | cashier | waiter | kitchen
     permissions: Mapped[list[str]] = mapped_column(MutableList.as_mutable(JSON), default=list)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -47,6 +47,8 @@ class Product(Base):
     image: Mapped[str] = mapped_column(String(200), default="")
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     sort: Mapped[int] = mapped_column(Integer, default=0)
+    # `kind` overrides category's station routing: kitchen | bar | both | null (use category)
+    kind: Mapped[str | None] = mapped_column(String(20), default=None)
 
     category: Mapped[Category] = relationship(back_populates="products")
     modifier_groups: Mapped[list["ModifierGroup"]] = relationship(

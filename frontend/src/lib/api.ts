@@ -49,6 +49,7 @@ export interface AdminProduct {
   category_id: number;
   image: string;
   active: boolean;
+  kind?: string;  // overrides category station routing
 }
 export interface AdminTable {
   id: number;
@@ -59,7 +60,7 @@ export interface AdminTable {
 export interface AdminUser {
   id: number;
   name: string;
-  role: 'admin' | 'cashier' | 'waiter' | 'kitchen';
+  role: 'admin' | 'master' | 'cashier' | 'waiter' | 'kitchen';
   permissions: string[];
   active?: boolean;
 }
@@ -73,9 +74,9 @@ export const Admin = {
   deleteCategory: (id: number) => api.delete<{ deleted: number }>(`/admin/categories/${id}`).then((r) => r.data),
 
   listProducts: () => api.get<AdminProduct[]>('/admin/products').then((r) => r.data),
-  createProduct: (p: { name: string; description?: string; price: number; category_id: number; image?: string; active?: boolean }) =>
+  createProduct: (p: { name: string; description?: string; price: number; category_id: number; image?: string; active?: boolean; kind?: string }) =>
     api.post<AdminProduct>('/admin/products', p).then((r) => r.data),
-  updateProduct: (id: number, p: Partial<{ name: string; description: string; price: number; category_id: number; image: string; active: boolean }>) =>
+  updateProduct: (id: number, p: Partial<{ name: string; description: string; price: number; category_id: number; image: string; active: boolean; kind?: string }>) =>
     api.patch<AdminProduct>(`/admin/products/${id}`, p).then((r) => r.data),
   deleteProduct: (id: number) => api.delete<{ deleted: number }>(`/admin/products/${id}`).then((r) => r.data),
 
@@ -92,6 +93,70 @@ export const Admin = {
   updateUser: (id: number, p: Partial<{ name: string; pin: string; role: string; permissions: string[]; active: boolean }>) =>
     api.patch<AdminUser>(`/admin/users/${id}`, p).then((r) => r.data),
   deleteUser: (id: number) => api.delete<{ deleted: number }>(`/admin/users/${id}`).then((r) => r.data),
+};
+
+export interface SalesSummary {
+  period: string;
+  total_revenue: number;
+  total_orders: number;
+  avg_order_value: number;
+  profit: number;
+}
+
+export interface CategorySales {
+  category_id: number;
+  category_name: string;
+  category_color: string;
+  revenue: number;
+  order_count: number;
+  item_count: number;
+}
+
+export interface ItemSales {
+  product_id: number;
+  product_name: string;
+  category_name: string;
+  category_color: string;
+  quantity: number;
+  revenue: number;
+}
+
+export interface PaymentMethodSummary {
+  method: string;
+  amount: number;
+  count: number;
+  percentage: number;
+}
+
+export interface BillHistoryItem {
+  order_id: number;
+  order_number: number;
+  table_name: string | null;
+  customer_name: string;
+  status: string;
+  subtotal: number;
+  tax: number;
+  total: number;
+  payment_method: string | null;
+  created_at: string;
+  items: Array<{ id: number; name: string; price: number; qty: number; subtotal: number }>;
+}
+
+export const Reports = {
+  salesSummary: (period: string, startDate?: string, endDate?: string) =>
+    api.get<SalesSummary>('/admin/reports/sales-summary', { params: { period, start_date: startDate, end_date: endDate } }).then((r) => r.data),
+  
+  salesByCategory: (period: string, startDate?: string, endDate?: string) =>
+    api.get<CategorySales[]>('/admin/reports/sales-by-category', { params: { period, start_date: startDate, end_date: endDate } }).then((r) => r.data),
+  
+  itemSales: (period: string, startDate?: string, endDate?: string, limit = 50) =>
+    api.get<ItemSales[]>('/admin/reports/item-sales', { params: { period, start_date: startDate, end_date: endDate, limit } }).then((r) => r.data),
+  
+  paymentMethods: (period: string, startDate?: string, endDate?: string) =>
+    api.get<PaymentMethodSummary[]>('/admin/reports/payment-methods', { params: { period, start_date: startDate, end_date: endDate } }).then((r) => r.data),
+  
+  billHistory: (period: string, startDate?: string, endDate?: string, status?: string, limit = 100) =>
+    api.get<BillHistoryItem[]>('/admin/reports/bill-history', { params: { period, start_date: startDate, end_date: endDate, status, limit } }).then((r) => r.data),
 };
 
 export const Menu = {

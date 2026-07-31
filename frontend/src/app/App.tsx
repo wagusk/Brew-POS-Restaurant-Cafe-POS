@@ -16,6 +16,7 @@ import WaiterPage from '../pages/WaiterPage';
 import KitchenPage from '../pages/KitchenPage';
 import BarPage from '../pages/BarPage';
 import AdminPage from '../pages/AdminPage';
+import SettingsPage from '../pages/SettingsPage';
 import Shell from '../components/Shell';
 
 function PermissionRoute({ permission, children }: { permission: Permission; children: React.ReactNode }) {
@@ -84,7 +85,15 @@ function RoleRouter() {
           element={
             <PermissionRoute permission="admin.view">
               <AdminPage />
-           </PermissionRoute>
+            </PermissionRoute>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <PermissionRoute permission="settings.view">
+              <SettingsPage />
+            </PermissionRoute>
           }
         />
         <Route path="/login" element={<Navigate to={defaultPath(user)} replace />} />

@@ -3,7 +3,8 @@ import {
   Box, Paper, Typography, Grid, Button, IconButton, Chip,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem,
   Switch, FormControlLabel, Stack, Divider, Tooltip, InputAdornment,
-  Slider, Alert, CircularProgress,
+  Slider, Alert, CircularProgress, Table, TableBody, TableCell, TableContainer,
+  TableHead, TableRow,
 } from '@mui/material';
 import RestaurantIcon from '@mui/icons-material/Restaurant';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
@@ -30,7 +31,10 @@ import UploadIcon from '@mui/icons-material/Upload';
 import PercentIcon from '@mui/icons-material/Percent';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import WarningIcon from '@mui/icons-material/Warning';
-import { Admin, Orders, Settings, type SettingsPayload } from '../lib/api';
+import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from 'recharts';
+import { Admin, Orders, Settings, Reports, type SettingsPayload } from '../lib/api';
 import { ws } from '../lib/ws';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { setMenu } from '../store/menuSlice';
@@ -53,15 +57,12 @@ const SHAPE = {
 // Each main-menu entry owns one color. The color carries through the
 // column-1 icon, the column-2 selected item, the column-3 accent bar,
 // and the dialog Save button.
-type MainKey = 'stats' | 'categories' | 'products' | 'tables' | 'users' | 'settings';
+type MainKey = 'stats' | 'reports' | 'users';
 
 const MAIN_COLOR: Record<MainKey, string> = {
   stats: '#6b46d3',
-  categories: '#0c8a7a',
-  products: '#2b6cff',
-  tables: '#0c8a7a',
+  reports: '#6b46d3',
   users: '#6b46d3',
-  settings: '#5b6472',
 };
 
 interface MainItem {
@@ -71,22 +72,20 @@ interface MainItem {
 }
 
 const MAIN_ITEMS: MainItem[] = [
-  { key: 'stats',      label: 'Stats',      icon: <BarChartIcon /> },
-  { key: 'categories', label: 'Categories', icon: <CategoryIcon /> },
-  { key: 'products',   label: 'Products',   icon: <RestaurantMenuIcon /> },
-  { key: 'tables',     label: 'Tables',     icon: <TableRestaurantIcon /> },
-  { key: 'users',      label: 'Users',      icon: <PeopleIcon /> },
-  { key: 'settings',   label: 'Settings',   icon: <TuneIcon /> },
+  { key: 'stats', label: 'Stats', icon: <BarChartIcon /> },
+  { key: 'reports', label: 'Reports', icon: <BarChartIcon /> },
+  { key: 'users', label: 'Users', icon: <PeopleIcon /> },
 ];
 
 // ── Role filter for Users tab ────────────────────────────────────────
 // Mirrors the cashier menu's "category chip filter" — picks the
 // secondary dimension (role) and lists users in it.
-type RoleKey = 'all' | 'admin' | 'cashier' | 'waiter' | 'kitchen';
+type RoleKey = 'all' | 'admin' | 'master' | 'cashier' | 'waiter' | 'kitchen';
 
 const ROLE_LIST: { key: RoleKey; label: string; color: string }[] = [
   { key: 'all',     label: 'All',     color: '#5b6472' },
   { key: 'admin',   label: 'Admin',   color: '#6b46d3' },
+  { key: 'master',  label: 'Master',  color: '#d63031' },
   { key: 'cashier', label: 'Cashier', color: '#2b6cff' },
   { key: 'waiter',  label: 'Waiter',  color: '#0c8a7a' },
   { key: 'kitchen', label: 'Kitchen', color: '#e07b1a' },
@@ -306,20 +305,11 @@ export default function AdminPage() {
         {main === 'stats' && (
           <StatsWorkspace color={color} stats={stats} />
         )}
-        {main === 'categories' && (
-          <CategoriesWorkspace color={color} />
-        )}
-        {main === 'products' && (
-          <ProductsWorkspace color={color} />
-        )}
-        {main === 'tables' && (
-          <TablesWorkspace color={color} />
+        {main === 'reports' && (
+          <ReportsWorkspace color={color} />
         )}
         {main === 'users' && (
           <UsersWorkspace color={color} />
-        )}
-        {main === 'settings' && (
-          <SettingsWorkspace color={color} />
         )}
       </Box>
     </Box>
@@ -374,6 +364,424 @@ function StatCard({ title, value, icon, color }: { title: string; value: any; ic
         {value}
       </Typography>
     </Paper>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// REPORTS WORKSPACE — sales, items, payments, bills with pie charts
+// ─────────────────────────────────────────────────────────────────────
+type ReportPeriod = 'day' | 'week' | 'month' | 'custom';
+type ReportTab = 'sales' | 'items' | 'payments' | 'bills';
+
+const REPORT_TABS: { key: ReportTab; label: string }[] = [
+  { key: 'sales', label: 'Sales Summary' },
+  { key: 'items', label: 'Item Sales' },
+  { key: 'payments', label: 'Payment Methods' },
+  { key: 'bills', label: 'Bill History' },
+];
+
+function ReportsWorkspace({ color }: { color: string }) {
+  const [period, setPeriod] = useState<ReportPeriod>('day');
+  const [tab, setTab] = useState<ReportTab>('sales');
+  const [customStart, setCustomStart] = useState<string>('');
+  const [customEnd, setCustomEnd] = useState<string>('');
+  const [loading, setLoading] = useState(false);
+  const [salesSummary, setSalesSummary] = useState<any>(null);
+  const [categorySales, setCategorySales] = useState<any[]>([]);
+  const [itemSales, setItemSales] = useState<any[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
+  const [billHistory, setBillHistory] = useState<any[]>([]);
+
+  const loadReports = async () => {
+    setLoading(true);
+    try {
+      // Build params based on period
+      const startDate = period === 'custom' ? customStart : undefined;
+      const endDate = period === 'custom' ? customEnd : undefined;
+      
+      const [sales, categories, items, payments, bills] = await Promise.all([
+        Reports.salesSummary(period, startDate, endDate),
+        Reports.salesByCategory(period, startDate, endDate),
+        Reports.itemSales(period, startDate, endDate),
+        Reports.paymentMethods(period, startDate, endDate),
+        Reports.billHistory(period, startDate, endDate),
+      ]);
+      setSalesSummary(sales);
+      setCategorySales(categories);
+      setItemSales(items);
+      setPaymentMethods(payments);
+      setBillHistory(bills);
+    } catch (e) {
+      console.error('Failed to load reports:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load on period/date change (immediate calculation)
+  useEffect(() => {
+    if (period === 'custom') {
+      // For custom, require both dates
+      if (customStart && customEnd) {
+        loadReports();
+      }
+    } else {
+      loadReports();
+    }
+  }, [period, customStart, customEnd]);
+
+  // Color palette for pie charts
+  const COLORS = ['#6b46d3', '#2b6cff', '#0c8a7a', '#e07b1a', '#d63031', '#00b894', '#fd79a8', '#6c5ce7'];
+
+  const formatCurrency = (value: number) => `$${value.toFixed(2)}`;
+
+  // Helper to get period label for display
+  const getPeriodLabel = () => {
+    if (period === 'custom' && customStart && customEnd) {
+      return `${customStart} to ${customEnd}`;
+    }
+    const today = new Date();
+    if (period === 'day') return today.toLocaleDateString();
+    if (period === 'week') {
+      const start = new Date(today);
+      start.setDate(today.getDate() - today.getDay() + 1);
+      const end = new Date(start);
+      end.setDate(start.getDate() + 6);
+      return `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`;
+    }
+    if (period === 'month') {
+      return `${today.toLocaleString('default', { month: 'long', year: 'numeric' })}`;
+    }
+    return 'Today';
+  };
+
+  return (
+    <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+      {/* COLUMN 1: Report Type Selector */}
+      <Paper
+        square
+        sx={{
+          width: '25%',
+          minWidth: 220,
+          maxWidth: 280,
+          display: 'flex',
+          flexDirection: 'column',
+          borderTop: 'none', borderLeft: 'none', borderBottom: 'none',
+          borderRadius: 0,
+        }}
+      >
+        <ColumnHeader title="REPORTS" color={color} count={REPORT_TABS.length} />
+        <Box sx={{ flex: 1, overflowY: 'auto' }}>
+          {REPORT_TABS.map((t) => (
+            <ListItemButton
+              key={t.key}
+              active={tab === t.key}
+              color={color}
+              label={t.label}
+              onClick={() => setTab(t.key)}
+              accent={tab === t.key}
+            />
+          ))}
+        </Box>
+      </Paper>
+
+      <Divider orientation="vertical" flexItem />
+
+      {/* COLUMN 2: Report View */}
+      <Box sx={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+        {/* Filter Bar */}
+        <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'border.default', bgcolor: 'surface.paper' }}>
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+            <CalendarTodayIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>Filter:</Typography>
+            
+            {/* Quick Period Buttons */}
+            {(['day', 'week', 'month'] as ReportPeriod[]).map((p) => (
+              <Chip
+                key={p}
+                label={p.charAt(0).toUpperCase() + p.slice(1)}
+                onClick={() => {
+                  setPeriod(p);
+                  setCustomStart('');
+                  setCustomEnd('');
+                }}
+                color={period === p ? 'primary' : 'default'}
+                sx={{ fontWeight: 600 }}
+              />
+            ))}
+            
+            {/* Custom Date Range */}
+            <Chip
+              label="Custom"
+              onClick={() => setPeriod('custom')}
+              color={period === 'custom' ? 'primary' : 'default'}
+              sx={{ fontWeight: 600 }}
+            />
+            
+            {/* Custom Date Inputs */}
+            {period === 'custom' && (
+              <>
+                <TextField
+                  type="date"
+                  size="small"
+                  label="From"
+                  value={customStart}
+                  onChange={(e) => setCustomStart(e.target.value)}
+                  sx={{ width: 150 }}
+                  InputLabelProps={{ shrink: true }}
+                />
+                <TextField
+                  type="date"
+                  size="small"
+                  label="To"
+                  value={customEnd}
+                  onChange={(e) => setCustomEnd(e.target.value)}
+                  sx={{ width: 150 }}
+                  InputLabelProps={{ shrink: true }}
+                />
+              </>
+            )}
+            
+            <Box sx={{ flex: 1 }} />
+            
+            <Typography variant="body2" sx={{ color: 'text.secondary', fontWeight: 500 }}>
+              {getPeriodLabel()}
+            </Typography>
+            
+            <Button
+              size="small"
+              startIcon={<RefreshIcon />}
+              onClick={loadReports}
+              disabled={loading}
+            >
+              Refresh
+            </Button>
+          </Box>
+        </Box>
+
+        {/* Report Content */}
+        <Box sx={{ flex: 1, p: 2, overflowY: 'auto' }}>
+          {loading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <>
+              {tab === 'sales' && salesSummary && (
+                <Box>
+                  {/* Summary Cards */}
+                  <Grid container spacing={2} sx={{ mb: 3 }}>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <Paper sx={{ p: 2, borderTop: `4px solid ${color}` }}>
+                        <Typography variant="overline" sx={{ color: 'text.secondary' }}>Revenue</Typography>
+                        <Typography variant="h4" sx={{ fontWeight: 700 }}>{formatCurrency(salesSummary.total_revenue)}</Typography>
+                      </Paper>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <Paper sx={{ p: 2, borderTop: `4px solid ${color}` }}>
+                        <Typography variant="overline" sx={{ color: 'text.secondary' }}>Orders</Typography>
+                        <Typography variant="h4" sx={{ fontWeight: 700 }}>{salesSummary.total_orders}</Typography>
+                      </Paper>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <Paper sx={{ p: 2, borderTop: `4px solid ${color}` }}>
+                        <Typography variant="overline" sx={{ color: 'text.secondary' }}>Avg Order</Typography>
+                        <Typography variant="h4" sx={{ fontWeight: 700 }}>{formatCurrency(salesSummary.avg_order_value)}</Typography>
+                      </Paper>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <Paper sx={{ p: 2, borderTop: `4px solid #00b894` }}>
+                        <Typography variant="overline" sx={{ color: 'text.secondary' }}>Profit (Est.)</Typography>
+                        <Typography variant="h4" sx={{ fontWeight: 700, color: '#00b894' }}>{formatCurrency(salesSummary.profit)}</Typography>
+                      </Paper>
+                    </Grid>
+                  </Grid>
+
+                  {/* Category Sales Pie Chart */}
+                  {categorySales.length > 0 && (
+                    <Paper sx={{ p: 2 }}>
+                      <Typography variant="h6" sx={{ mb: 2, fontWeight: 700 }}>Sales by Category</Typography>
+                      <Box sx={{ height: 300 }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={categorySales}
+                              dataKey="revenue"
+                              nameKey="category_name"
+                              cx="50%"
+                              cy="50%"
+                              outerRadius={100}
+                              label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(1)}%`}
+                            >
+                              {categorySales.map((entry: any, index: number) => (
+                                <Cell key={`cell-${index}`} fill={entry.category_color || COLORS[index % COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <RechartsTooltip formatter={(value: number) => formatCurrency(value)} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </Box>
+                    </Paper>
+                  )}
+                </Box>
+              )}
+
+              {tab === 'items' && (
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="h6" sx={{ mb: 2, fontWeight: 700 }}>Top Selling Items</Typography>
+                  <Box sx={{ height: 300, mb: 2 }}>
+                    {itemSales.length > 0 && (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={itemSales.slice(0, 8)}
+                            dataKey="revenue"
+                            nameKey="product_name"
+                            cx="50%"
+                            cy="50%"
+                            outerRadius={100}
+                            label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(1)}%`}
+                          >
+                            {itemSales.slice(0, 8).map((entry: any, index: number) => (
+                              <Cell key={`cell-${index}`} fill={entry.category_color || COLORS[index % COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <RechartsTooltip formatter={(value: number) => formatCurrency(value)} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    )}
+                  </Box>
+                  {/* Table */}
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell sx={{ fontWeight: 700 }}>Item</TableCell>
+                          <TableCell sx={{ fontWeight: 700 }}>Category</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 700 }}>Qty</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 700 }}>Revenue</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {itemSales.slice(0, 20).map((item: any, idx: number) => (
+                          <TableRow key={idx}>
+                            <TableCell>{item.product_name}</TableCell>
+                            <TableCell>
+                              <Chip size="small" label={item.category_name} sx={{ bgcolor: item.category_color, color: '#fff', height: 24 }} />
+                            </TableCell>
+                            <TableCell align="right">{item.quantity}</TableCell>
+                            <TableCell align="right">{formatCurrency(item.revenue)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+              )}
+
+              {tab === 'payments' && (
+                <Box>
+                  {/* Payment Methods Pie Chart */}
+                  {paymentMethods.length > 0 && (
+                    <Paper sx={{ p: 2, mb: 2 }}>
+                      <Typography variant="h6" sx={{ mb: 2, fontWeight: 700 }}>Payment Methods</Typography>
+                      <Box sx={{ height: 300 }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={paymentMethods}
+                              dataKey="amount"
+                              nameKey="method"
+                              cx="50%"
+                              cy="50%"
+                              outerRadius={100}
+                              label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(1)}%`}
+                            >
+                              {paymentMethods.map((entry: any, index: number) => (
+                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <RechartsTooltip formatter={(value: number) => formatCurrency(value)} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </Box>
+                    </Paper>
+                  )}
+
+                  {/* Payment Summary Table */}
+                  <Paper sx={{ p: 2 }}>
+                    <Typography variant="h6" sx={{ mb: 2, fontWeight: 700 }}>Payment Details</Typography>
+                    <TableContainer>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell sx={{ fontWeight: 700 }}>Method</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 700 }}>Transactions</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 700 }}>Amount</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 700 }}>% of Total</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {paymentMethods.map((pm: any, idx: number) => (
+                            <TableRow key={idx}>
+                              <TableCell sx={{ textTransform: 'capitalize' }}>{pm.method}</TableCell>
+                              <TableCell align="right">{pm.count}</TableCell>
+                              <TableCell align="right">{formatCurrency(pm.amount)}</TableCell>
+                              <TableCell align="right">{pm.percentage}%</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </Paper>
+                </Box>
+              )}
+
+              {tab === 'bills' && (
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="h6" sx={{ mb: 2, fontWeight: 700 }}>Bill History</Typography>
+                  <TableContainer sx={{ maxHeight: 500 }}>
+                    <Table size="small" stickyHeader>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell sx={{ fontWeight: 700 }}>#</TableCell>
+                          <TableCell sx={{ fontWeight: 700 }}>Table/Customer</TableCell>
+                          <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+                          <TableCell sx={{ fontWeight: 700 }}>Payment</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 700 }}>Total</TableCell>
+                          <TableCell sx={{ fontWeight: 700 }}>Time</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {billHistory.map((bill: any) => (
+                          <TableRow key={bill.order_id}>
+                            <TableCell>#{bill.order_number}</TableCell>
+                            <TableCell>
+                              <Typography variant="body2">{bill.table_name || '-'}</Typography>
+                              <Typography variant="caption" color="text.secondary">{bill.customer_name || '-'}</Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Chip 
+                                size="small" 
+                                label={bill.status} 
+                                color={bill.status === 'paid' ? 'success' : bill.status === 'open' ? 'warning' : 'default'}
+                              />
+                            </TableCell>
+                            <TableCell sx={{ textTransform: 'capitalize' }}>{bill.payment_method || '-'}</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 600 }}>{formatCurrency(bill.total)}</TableCell>
+                            <TableCell>{new Date(bill.created_at).toLocaleTimeString()}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+              )}
+            </>
+          )}
+        </Box>
+      </Box>
+    </Box>
   );
 }
 
@@ -1455,7 +1863,18 @@ function UserDialog({ open, initial, onClose, onSave }: {
           <Typography variant="caption" fontWeight={800}>PAGE ACCESS</Typography>
           {[
             ['dashboard.view', 'Dashboard'], ['cashier.view', 'Cashier'], ['waiter.view', 'Waiter'],
-            ['kitchen.view', 'Kitchen'], ['bar.view', 'Bar'], ['admin.view', 'Admin'],
+            ['kitchen.view', 'Kitchen'], ['bar.view', 'Bar'], ['menu.view', 'Menu'], ['admin.view', 'Admin'],
+          ].map(([permission, label]) => (
+            <FormControlLabel
+              key={permission}
+              control={<Switch checked={permissions.includes(permission)} onChange={(e) => setPermissions((current) => e.target.checked ? [...current, permission] : current.filter((item) => item !== permission))} />}
+              label={label}
+            />
+          ))}
+          <Typography variant="caption" fontWeight={800}>ADMIN PRIVILEGES</Typography>
+          {[
+            ['admin.reports', 'Reports'], ['admin.manage_menu', 'Manage Menu'], ['admin.manage_tables', 'Manage Tables'],
+            ['admin.manage_users', 'Manage Users'], ['admin.manage_settings', 'Settings'],
           ].map(([permission, label]) => (
             <FormControlLabel
               key={permission}

@@ -12,6 +12,7 @@ import RestaurantIcon from '@mui/icons-material/Restaurant';
 import SoupKitchenIcon from '@mui/icons-material/SoupKitchen';
 import LocalBarIcon from '@mui/icons-material/LocalBar';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
+import SettingsIcon from '@mui/icons-material/Settings';
 import { hasPermission, type Permission } from '../lib/permissions';
 
 // Maps a role string to its role palette key in theme.
@@ -69,6 +70,7 @@ export default function Shell({ children }: { children: ReactNode }) {
     { label: 'Kitchen', path: '/kitchen', permission: 'kitchen.view', icon: SoupKitchenIcon },
     { label: 'Bar', path: '/bar', permission: 'bar.view', icon: LocalBarIcon },
     { label: 'Admin', path: '/admin', permission: 'admin.view', icon: AdminPanelSettingsIcon },
+    { label: 'Settings', path: '/settings', permission: 'settings.view', icon: SettingsIcon },
   ];
   const visibleLinks = links.filter((link) => hasPermission(user, link.permission));
 

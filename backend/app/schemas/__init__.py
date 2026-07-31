@@ -42,6 +42,7 @@ class ProductOut(BaseModel):
     category_id: int
     image: str
     active: bool
+    kind: str | None = None  # overrides category station routing
 
 
 class ModOptionOut(BaseModel):
@@ -206,6 +207,7 @@ class ProductIn(BaseModel):
     image: str = ""
     active: bool = True
     sort: int = 0
+    kind: str | None = Field(default=None, pattern=r"^(kitchen|bar|both)$")  # overrides category kind
 
 
 class ProductUpdateIn(BaseModel):
@@ -216,6 +218,7 @@ class ProductUpdateIn(BaseModel):
     image: str | None = None
     active: bool | None = None
     sort: int | None = None
+    kind: str | None = Field(default=None, pattern=r"^(kitchen|bar|both)$")  # overrides category kind
 
 
 class TableIn(BaseModel):
