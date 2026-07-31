@@ -7,6 +7,7 @@ import { ROLE_DEFAULTS } from '../lib/permissions';
 import { useAppDispatch } from '../store/hooks';
 import { setAuth } from '../store/authSlice';
 import { useNavigate } from 'react-router-dom';
+import { defaultPath } from '../app/App';
 
 export default function LoginPage() {
   const [pin, setPin] = useState('');
@@ -31,7 +32,7 @@ export default function LoginPage() {
       const r = await Auth.login(pin);
       const user = { ...r.user, permissions: r.user.permissions ?? ROLE_DEFAULTS[r.user.role] ?? [] };
       dispatch(setAuth({ token: r.access_token, user }));
-      nav('/dashboard');
+      nav(defaultPath(user));
     } catch (e: any) {
       setError(e?.response?.data?.detail || 'Login failed');
       setPin('');

@@ -7,7 +7,6 @@ import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { logout } from '../store/authSlice';
 import { ws } from '../lib/ws';
 import { useNavigate, useLocation } from 'react-router-dom';
-import DashboardIcon from '@mui/icons-material/Dashboard';
 import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
 import RestaurantIcon from '@mui/icons-material/Restaurant';
 import SoupKitchenIcon from '@mui/icons-material/SoupKitchen';
@@ -25,6 +24,9 @@ const roleColor = (role: string): 'cashier' | 'waiter' | 'kitchen' | 'admin' => 
 
 // Both bars share this height — they read as one unified chrome strip.
 const BAR_HEIGHT = 64;
+
+// Sidebar width — narrow column for page selection. Fills the entire column.
+const SIDEBAR_WIDTH = '8%';
 
 // Menu-bar button palette — idle=yellow (warm, "ready to tap"),
 // active=green ("you are here"). 8px radius matches the rest of the app.
@@ -60,8 +62,8 @@ export default function Shell({ children }: { children: ReactNode }) {
   };
 
   const accent = user ? roleColor(user.role) : 'cashier';
-  const links: Array<{ label: string; path: string; permission: Permission; icon: typeof DashboardIcon }> = [
-    { label: 'Home', path: '/dashboard', permission: 'dashboard.view', icon: DashboardIcon },
+  // Dashboard omitted from sidebar
+  const links: Array<{ label: string; path: string; permission: Permission; icon: typeof PointOfSaleIcon }> = [
     { label: 'Cashier', path: '/cashier', permission: 'cashier.view', icon: PointOfSaleIcon },
     { label: 'Waiter', path: '/waiter', permission: 'waiter.view', icon: RestaurantIcon },
     { label: 'Kitchen', path: '/kitchen', permission: 'kitchen.view', icon: SoupKitchenIcon },
@@ -135,28 +137,31 @@ export default function Shell({ children }: { children: ReactNode }) {
        </Toolbar>
      </AppBar>
 
-      {/* ── MENU BAR — fixed below top bar, same height, big rounded buttons ── */}
-      <Box
-        sx={{
-          minHeight: BAR_HEIGHT,
-          height: BAR_HEIGHT,
-          bgcolor: 'surface.muted',
-          borderBottom: '1px solid',
-          borderColor: 'border.default',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 1,
-          px: 2,
-          overflowX: 'auto',
-        }}
-      >
+      {/* ── BODY ROW — left sidebar (page picker) + page display, side by side ── */}
+      <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'row', minHeight: 0 }}>
+        {/* ── LEFT SIDEBAR — vertical page picker, fills the 8% column ─────── */}
+        <Box
+          sx={{
+            width: SIDEBAR_WIDTH,
+            flexShrink: 0,
+            bgcolor: 'surface.muted',
+            borderRight: '1px solid',
+            borderColor: 'border.default',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'stretch',
+            gap: 1,
+            py: 1.5,
+            overflowY: 'auto',
+          }}
+        >
         {visibleLinks.map((link) => {
           const Icon = link.icon;
           // Active = current pathname starts with the link path (so
           // /admin/users still highlights the Admin tab).
           const active =
             location.pathname === link.path ||
-            (link.path !== '/dashboard' && location.pathname.startsWith(link.path));
+            location.pathname.startsWith(link.path);
           return (
             <Button
               key={link.path}
@@ -165,7 +170,7 @@ export default function Shell({ children }: { children: ReactNode }) {
               variant="contained"
               disableElevation
               sx={{
-                minHeight: 44,
+                minHeight: 56,
                 px: 2,
                 fontWeight: 700,
                 borderRadius: '8px',
@@ -187,11 +192,15 @@ export default function Shell({ children }: { children: ReactNode }) {
         {visibleLinks.length === 0 && (
           <Typography variant="caption" color="text.secondary" sx={{ pl: 1 }}>
             No accessible pages
-         </Typography>
+        </Typography>
         )}
-     </Box>
+    </Box>
 
-      <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex' }}>{children}</Box>
-   </Box>
+        {/* PAGE DISPLAY - side by side with sidebar */}
+        <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex', minWidth: 0 }}>
+          {children}
+      </Box>
+    </Box>
+ </Box>
   );
 }

@@ -94,30 +94,34 @@ function RoleRouter() {
   );
 }
 
-function defaultPath(user: User) {
-  if (hasPermission(user, 'dashboard.view')) return '/dashboard';
+// Landing-page priority — first entry the user has permission for wins.
+// Order matches the sidebar reading order so post-login destination matches
+// the leftmost button on the menu list.
+export function defaultPath(user: User) {
   const first = [
     ['cashier.view', '/cashier'],
     ['waiter.view', '/waiter'],
     ['kitchen.view', '/kitchen'],
     ['bar.view', '/bar'],
     ['admin.view', '/admin'],
+    ['settings.view', '/settings'],
   ] as const;
   return first.find(([permission]) => hasPermission(user, permission))?.[1] ?? '/login';
 }
 
 function NoAccess() {
   const nav = useNavigate();
+  const user = useAppSelector((state) => state.auth.user);
   return (
     <Box sx={{ p: 4 }}>
       <Typography variant="h5" fontWeight={800}>Access denied</Typography>
       <Typography color="text.secondary" sx={{ my: 1 }}>
         Your account has no permission for this page.
-     </Typography>
-      <Button variant="contained" onClick={() => nav('/dashboard')}>
-        Back to dashboard
-     </Button>
-   </Box>
+   </Typography>
+      <Button variant="contained" onClick={() => nav(user ? defaultPath(user) : '/login')}>
+        Back
+   </Button>
+ </Box>
   );
 }
 
