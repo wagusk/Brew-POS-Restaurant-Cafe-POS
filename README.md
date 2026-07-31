@@ -302,4 +302,14 @@ Open `http://localhost:8000/docs` for interactive Swagger UI.
 
 ## License
 
-MIT. Use it, fork it, build your restaurant on it.
+Business Source License 1.1 — see [LICENSE](LICENSE).
+
+This is **source-available, not open source**. You may read the source,
+fork it, and use it for non-production purposes (development, testing,
+evaluation). Running this in a production environment — i.e. using it to
+serve paying customers or operating a hosted service — requires a
+separate commercial license from the copyright holder.
+
+On **2030-07-31** (the Change Date), each release of this project
+converts to the **Apache License 2.0**, at which point the restrictions
+above expire for that version.

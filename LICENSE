@@ -1,0 +1,65 @@
+Business Source License 1.1
+
+Licensor:               wagusk
+Licensed Work:          Brew-POS
+                        The Licensed Work is (c) 2026 wagusk.
+Change Date:            2030-07-31
+Change License:         Apache License, Version 2.0
+
+Additional Use Grant:
+    None. Production use of the Licensed Work by anyone other than the
+    Licensor requires a separate written commercial license from the
+    Licensor.
+
+For full terms, see: https://mariadb.com/bsl11/
+
+--------------------------------------------------------------------------------
+
+Business Source License 1.1
+
+Licensor:             wagusk
+Licensed Work:        Brew-POS
+
+The Licensor hereby grants you the right to copy, modify, create derivative
+works, redistribute, and make non-production use of the Licensed Work.
+
+The Licensor may make the Licensed Work available under different license
+terms, including but not limited to a separate commercial license, by
+publishing a new release of the Licensed Work under those alternative
+terms.
+
+As used in this License, "production use" means use of the Licensed Work
+in a production environment — i.e. use of the Licensed Work to provide
+goods or services to third parties for compensation, or to operate a
+service that is offered to third parties in exchange for compensation.
+
+Any non-production use of the Licensed Work is permitted under the terms
+of this License. The Licensor may charge a fee for any non-production
+use of the Licensed Work.
+
+Except as expressly stated in this License, the Licensor grants you no
+other rights under any patents, copyrights, trade secrets, trademarks, or
+similar intellectual property.
+
+If you use the Licensed Work in a production environment, you must obtain
+a separate written license from the Licensor. Production use by anyone
+other than the Licensor is a violation of this License and may subject
+you to liability.
+
+Each contributor grants you a non-exclusive, worldwide, royalty-free
+patent license under the contributor's essential patent claims to make,
+use, sell, offer for sale, import and otherwise run, modify and propagate
+the contents of the contributor's contribution.
+
+THE LICENSED WORK IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE LICENSOR BE LIABLE FOR ANY CLAIM, DAMAGES OR
+OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ARISING FROM, OUT OF OR IN CONNECTION WITH THE LICENSED WORK OR THE
+USE OR OTHER DEALINGS IN THE LICENSED WORK.
+
+Change Date:          2030-07-31
+Change License:       Apache License, Version 2.0
+
+For full terms, see: https://mariadb.com/bsl11/
