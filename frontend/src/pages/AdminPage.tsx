@@ -370,7 +370,8 @@ function StatCard({ title, value, icon, color }: { title: string; value: any; ic
 // ─────────────────────────────────────────────────────────────────────
 // REPORTS WORKSPACE — sales, items, payments, bills with pie charts
 // ─────────────────────────────────────────────────────────────────────
-type ReportPeriod = 'day' | 'week' | 'month' | 'custom';
+type ReportPeriod = 'day' | 'week' | 'month' | 'all' | 'custom';
+type ReportStatus = 'all' | 'paid' | 'cancelled' | 'open' | 'accepted' | 'preparing' | 'ready' | 'served';
 type ReportTab = 'sales' | 'items' | 'payments' | 'bills';
 
 const REPORT_TABS: { key: ReportTab; label: string }[] = [
@@ -381,10 +382,11 @@ const REPORT_TABS: { key: ReportTab; label: string }[] = [
 ];
 
 function ReportsWorkspace({ color }: { color: string }) {
-  const [period, setPeriod] = useState<ReportPeriod>('day');
+  const [period, setPeriod] = useState<ReportPeriod>('all');
   const [tab, setTab] = useState<ReportTab>('sales');
   const [customStart, setCustomStart] = useState<string>('');
   const [customEnd, setCustomEnd] = useState<string>('');
+  const [billStatus, setBillStatus] = useState<ReportStatus>('all');
   const [loading, setLoading] = useState(false);
   const [salesSummary, setSalesSummary] = useState<any>(null);
   const [categorySales, setCategorySales] = useState<any[]>([]);
@@ -398,13 +400,13 @@ function ReportsWorkspace({ color }: { color: string }) {
       // Build params based on period
       const startDate = period === 'custom' ? customStart : undefined;
       const endDate = period === 'custom' ? customEnd : undefined;
-      
+
       const [sales, categories, items, payments, bills] = await Promise.all([
         Reports.salesSummary(period, startDate, endDate),
         Reports.salesByCategory(period, startDate, endDate),
         Reports.itemSales(period, startDate, endDate),
         Reports.paymentMethods(period, startDate, endDate),
-        Reports.billHistory(period, startDate, endDate),
+        Reports.billHistory(period, startDate, endDate, tab === 'bills' && billStatus !== 'all' ? billStatus : undefined),
       ]);
       setSalesSummary(sales);
       setCategorySales(categories);
@@ -418,7 +420,7 @@ function ReportsWorkspace({ color }: { color: string }) {
     }
   };
 
-  // Load on period/date change (immediate calculation)
+  // Load on period/date/billStatus change (immediate calculation)
   useEffect(() => {
     if (period === 'custom') {
       // For custom, require both dates
@@ -428,7 +430,7 @@ function ReportsWorkspace({ color }: { color: string }) {
     } else {
       loadReports();
     }
-  }, [period, customStart, customEnd]);
+  }, [period, customStart, customEnd, billStatus, tab]);
 
   // Color palette for pie charts
   const COLORS = ['#6b46d3', '#2b6cff', '#0c8a7a', '#e07b1a', '#d63031', '#00b894', '#fd79a8', '#6c5ce7'];
@@ -437,6 +439,7 @@ function ReportsWorkspace({ color }: { color: string }) {
 
   // Helper to get period label for display
   const getPeriodLabel = () => {
+    if (period === 'all') return 'All time';
     if (period === 'custom' && customStart && customEnd) {
       return `${customStart} to ${customEnd}`;
     }
@@ -496,10 +499,10 @@ function ReportsWorkspace({ color }: { color: string }) {
             <Typography variant="body2" sx={{ fontWeight: 600 }}>Filter:</Typography>
             
             {/* Quick Period Buttons */}
-            {(['day', 'week', 'month'] as ReportPeriod[]).map((p) => (
+            {(['day', 'week', 'month', 'all'] as ReportPeriod[]).map((p) => (
               <Chip
                 key={p}
-                label={p.charAt(0).toUpperCase() + p.slice(1)}
+                label={p === 'all' ? 'All Time' : p.charAt(0).toUpperCase() + p.slice(1)}
                 onClick={() => {
                   setPeriod(p);
                   setCustomStart('');
@@ -575,27 +578,33 @@ function ReportsWorkspace({ color }: { color: string }) {
                       <Paper sx={{ p: 2, borderTop: `4px solid ${color}` }}>
                         <Typography variant="overline" sx={{ color: 'text.secondary' }}>Revenue</Typography>
                         <Typography variant="h4" sx={{ fontWeight: 700 }}>{formatCurrency(salesSummary.total_revenue)}</Typography>
-                      </Paper>
-                    </Grid>
+                    </Paper>
+                  </Grid>
                     <Grid item xs={12} sm={6} md={3}>
                       <Paper sx={{ p: 2, borderTop: `4px solid ${color}` }}>
                         <Typography variant="overline" sx={{ color: 'text.secondary' }}>Orders</Typography>
                         <Typography variant="h4" sx={{ fontWeight: 700 }}>{salesSummary.total_orders}</Typography>
-                      </Paper>
-                    </Grid>
+                     </Paper>
+                   </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <Paper sx={{ p: 2, borderTop: `4px solid ${color}` }}>
+                        <Typography variant="overline" sx={{ color: 'text.secondary' }}>Items Sold</Typography>
+                        <Typography variant="h4" sx={{ fontWeight: 700 }}>{salesSummary.total_items_sold ?? 0}</Typography>
+                     </Paper>
+                   </Grid>
                     <Grid item xs={12} sm={6} md={3}>
                       <Paper sx={{ p: 2, borderTop: `4px solid ${color}` }}>
                         <Typography variant="overline" sx={{ color: 'text.secondary' }}>Avg Order</Typography>
                         <Typography variant="h4" sx={{ fontWeight: 700 }}>{formatCurrency(salesSummary.avg_order_value)}</Typography>
-                      </Paper>
-                    </Grid>
+                    </Paper>
+                  </Grid>
                     <Grid item xs={12} sm={6} md={3}>
                       <Paper sx={{ p: 2, borderTop: `4px solid #00b894` }}>
                         <Typography variant="overline" sx={{ color: 'text.secondary' }}>Profit (Est.)</Typography>
                         <Typography variant="h4" sx={{ fontWeight: 700, color: '#00b894' }}>{formatCurrency(salesSummary.profit)}</Typography>
-                      </Paper>
-                    </Grid>
+                    </Paper>
                   </Grid>
+                </Grid>
 
                   {/* Category Sales Pie Chart */}
                   {categorySales.length > 0 && (

@@ -201,9 +201,10 @@ from pydantic import BaseModel
 
 
 class SalesSummary(BaseModel):
-    period: str  # day | week | month
+    period: str  # day | week | month | all | custom
     total_revenue: float
     total_orders: int
+    total_items_sold: int  # quantity across all paid bill line items
     avg_order_value: float
     profit: float  # revenue - (simulated cost at 30%)
 
@@ -257,13 +258,14 @@ def _parse_date(date_str: str | None) -> datetime:
     return datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
 
 
-def _get_date_range(period: str, start_date: datetime | None = None, end_date: datetime | None = None) -> tuple[datetime, datetime]:
+def _get_date_range(period: str, start_date: datetime | None = None, end_date: datetime | None = None) -> tuple[datetime, datetime | None]:
     """Get start and end datetime for the period.
     
     period options:
     - day: today
     - week: current week (from Monday)
     - month: current month
+    - all: all time (returns None for end to indicate no limit)
     - custom: use start_date and end_date directly
     """
     now = datetime.utcnow()
@@ -271,6 +273,10 @@ def _get_date_range(period: str, start_date: datetime | None = None, end_date: d
     # For custom period, use provided dates directly
     if period == "custom" and start_date and end_date:
         return start_date, end_date
+    
+    # For "all" period, return None end to indicate no limit
+    if period == "all":
+        return datetime(2000, 1, 1), None
     
     if start_date:
         now = start_date
@@ -291,44 +297,55 @@ def _get_date_range(period: str, start_date: datetime | None = None, end_date: d
         else:
             end = start.replace(month=start.month + 1)
     else:
-        raise HTTPException(400, "Invalid period: must be day, week, month, or custom")
+        raise HTTPException(400, "Invalid period: must be day, week, month, all, or custom")
     
     return start, end
 
 
 @router.get("/reports/sales-summary", response_model=SalesSummary)
 def get_sales_summary(
-    period: str = Query("day", description="day|week|month|custom"),
+    period: str = Query("day", description="day|week|month|all|custom"),
     start_date: Optional[str] = Query(None, description="YYYY-MM-DD"),
     end_date: Optional[str] = Query(None, description="YYYY-MM-DD for custom range"),
     db: Session = Depends(get_db),
     user: UserModel = Depends(require_permission("admin.reports")),
 ):
-    """Get sales summary for a period."""
+    """Get sales summary for a period. Aggregates every paid bill in range."""
     start = _parse_date(start_date if start_date else None)
     end_dt = _parse_date(end_date if end_date else None) if end_date else None
     if end_dt:
         end_dt = end_dt + timedelta(days=1)  # Include the end date fully
     start, end = _get_date_range(period, start, end_dt)
-    
-    # Query orders in period with status paid
-    orders = db.query(Order).filter(
-        Order.status == "paid",
-        Order.created_at >= start,
-        Order.created_at < end,
-    ).all()
-    
+
+    # Pull the paid orders in one query; compute items-sold separately to keep
+    # the math readable.
+    query = db.query(Order).filter(Order.status == "paid", Order.created_at >= start)
+    if end:
+        query = query.filter(Order.created_at < end)
+    orders = query.all()
+
     total_revenue = sum(o.total for o in orders)
     total_orders = len(orders)
     avg_order_value = total_revenue / total_orders if total_orders > 0 else 0
-    
+
+    # Items sold across all paid bills in the period (exclude cancelled lines)
+    items_q = (
+        db.query(func.coalesce(func.sum(OrderItem.qty), 0))
+        .join(Order, Order.id == OrderItem.order_id)
+        .filter(Order.status == "paid", OrderItem.status != "cancelled", Order.created_at >= start)
+    )
+    if end:
+        items_q = items_q.filter(Order.created_at < end)
+    total_items_sold = int(items_q.scalar() or 0)
+
     # Simulated profit (30% cost)
     profit = total_revenue * 0.70
-    
+
     return SalesSummary(
         period=period,
         total_revenue=round(total_revenue, 2),
         total_orders=total_orders,
+        total_items_sold=total_items_sold,
         avg_order_value=round(avg_order_value, 2),
         profit=round(profit, 2),
     )
@@ -336,28 +353,28 @@ def get_sales_summary(
 
 @router.get("/reports/sales-by-category", response_model=list[CategorySales])
 def get_sales_by_category(
-    period: str = Query("day", description="day|week|month|custom"),
+    period: str = Query("day", description="day|week|month|all|custom"),
     start_date: Optional[str] = Query(None, description="YYYY-MM-DD"),
     end_date: Optional[str] = Query(None, description="YYYY-MM-DD for custom range"),
     db: Session = Depends(get_db),
     user: UserModel = Depends(require_permission("admin.reports")),
 ):
-    """Get sales breakdown by category."""
+    """Get sales breakdown by category. Shows ALL categories (zero if no sales)."""
     start = _parse_date(start_date if start_date else None)
     end_dt = _parse_date(end_date if end_date else None) if end_date else None
     if end_dt:
         end_dt = end_dt + timedelta(days=1)
     start, end = _get_date_range(period, start, end_dt)
-    
-    # Get category sales
-    results = (
+
+    # Get sales grouped by category
+    query = (
         db.query(
             Category.id.label("category_id"),
             Category.name.label("category_name"),
             Category.color.label("category_color"),
-            func.sum(OrderItem.price * OrderItem.qty).label("revenue"),
+            func.coalesce(func.sum(OrderItem.price * OrderItem.qty), 0).label("revenue"),
             func.count(func.distinct(Order.id)).label("order_count"),
-            func.sum(OrderItem.qty).label("item_count"),
+            func.coalesce(func.sum(OrderItem.qty), 0).label("item_count"),
         )
         .join(Product, Product.id == OrderItem.product_id)
         .join(Category, Category.id == Product.category_id)
@@ -365,143 +382,195 @@ def get_sales_by_category(
         .filter(
             Order.status == "paid",
             Order.created_at >= start,
-            Order.created_at < end,
         )
-        .group_by(Category.id, Category.name, Category.color)
-        .all()
     )
-    
-    return [
-        CategorySales(
-            category_id=r.category_id,
-            category_name=r.category_name,
-            category_color=r.category_color,
-            revenue=round(float(r.revenue or 0), 2),
-            order_count=r.order_count or 0,
-            item_count=r.item_count or 0,
-        )
+    if end:
+        query = query.filter(Order.created_at < end)
+    results = query.group_by(Category.id, Category.name, Category.color).all()
+
+    sales_by_cat = {
+        r.category_id: {
+            "revenue": float(r.revenue or 0),
+            "order_count": int(r.order_count or 0),
+            "item_count": int(r.item_count or 0),
+        }
         for r in results
-    ]
+    }
+
+    # Include all categories — zero out those without sales in the period
+    all_categories = db.query(Category).all()
+    out = []
+    for c in all_categories:
+        s = sales_by_cat.get(c.id, {"revenue": 0.0, "order_count": 0, "item_count": 0})
+        out.append(CategorySales(
+            category_id=c.id,
+            category_name=c.name,
+            category_color=c.color,
+            revenue=round(s["revenue"], 2),
+            order_count=s["order_count"],
+            item_count=s["item_count"],
+        ))
+    out.sort(key=lambda x: x.revenue, reverse=True)
+    return out
 
 
 @router.get("/reports/item-sales", response_model=list[ItemSales])
 def get_item_sales(
-    period: str = Query("day", description="day|week|month"),
-    start_date: Optional[str] = Query(None, description="YYYY-MM-DD"),
-    limit: int = Query(50, description="Max items to return"),
-    db: Session = Depends(get_db),
-    user: UserModel = Depends(require_permission("admin.reports")),
-):
-    """Get sales breakdown by item."""
-    start = _parse_date(start_date if start_date else None)
-    start, end = _get_date_range(period, start)
-    
-    results = (
-        db.query(
-            Product.id.label("product_id"),
-            Product.name.label("product_name"),
-            Category.name.label("category_name"),
-            Category.color.label("category_color"),
-            func.sum(OrderItem.qty).label("quantity"),
-            func.sum(OrderItem.price * OrderItem.qty).label("revenue"),
-        )
-        .join(Category, Category.id == Product.category_id)
-        .join(OrderItem, OrderItem.product_id == Product.id)
-        .join(Order, Order.id == OrderItem.order_id)
-        .filter(
-            Order.status == "paid",
-            Order.created_at >= start,
-            Order.created_at < end,
-        )
-        .group_by(Product.id, Product.name, Category.name, Category.color)
-        .order_by(func.sum(OrderItem.qty).desc())
-        .limit(limit)
-        .all()
-    )
-    
-    return [
-        ItemSales(
-            product_id=r.product_id,
-            product_name=r.product_name,
-            category_name=r.category_name or "Unknown",
-            category_color=r.category_color or "#888888",
-            quantity=r.quantity or 0,
-            revenue=round(float(r.revenue or 0), 2),
-        )
-        for r in results
-    ]
-
-
-@router.get("/reports/payment-methods", response_model=list[PaymentMethodSummary])
-def get_payment_methods(
-    period: str = Query("day", description="day|week|month|custom"),
+    period: str = Query("day", description="day|week|month|all|custom"),
     start_date: Optional[str] = Query(None, description="YYYY-MM-DD"),
     end_date: Optional[str] = Query(None, description="YYYY-MM-DD for custom range"),
+    limit: int = Query(100, description="Max items to return"),
     db: Session = Depends(get_db),
     user: UserModel = Depends(require_permission("admin.reports")),
 ):
-    """Get payment method breakdown."""
+    """Get sales breakdown by item - shows ALL products with quantity=0 if not sold."""
     start = _parse_date(start_date if start_date else None)
     end_dt = _parse_date(end_date if end_date else None) if end_date else None
     if end_dt:
         end_dt = end_dt + timedelta(days=1)
     start, end = _get_date_range(period, start, end_dt)
-    
-    results = (
+
+    # Get all products (active ones only — inactive products are not buyable)
+    all_products = db.query(Product).join(Category).filter(Product.active == True).all()  # noqa: E712
+
+    # Get sales data for the period (only count non-cancelled items)
+    sales_query = (
+        db.query(
+            Product.id.label("product_id"),
+            func.coalesce(func.sum(OrderItem.qty), 0).label("quantity"),
+            func.coalesce(func.sum(OrderItem.price * OrderItem.qty), 0).label("revenue"),
+        )
+        .join(OrderItem, OrderItem.product_id == Product.id)
+        .join(Order, Order.id == OrderItem.order_id)
+        .filter(
+            Order.status == "paid",
+            OrderItem.status != "cancelled",
+            Order.created_at >= start,
+        )
+    )
+    if end:
+        sales_query = sales_query.filter(Order.created_at < end)
+    sales_data = sales_query.group_by(Product.id).all()
+
+    # Create a lookup dict
+    sales_lookup = {
+        r.product_id: {"quantity": int(r.quantity or 0), "revenue": float(r.revenue or 0)}
+        for r in sales_data
+    }
+
+    # Build result with ALL products
+    result = []
+    for p in all_products:
+        sales = sales_lookup.get(p.id, {"quantity": 0, "revenue": 0.0})
+        result.append(ItemSales(
+            product_id=p.id,
+            product_name=p.name,
+            category_name=p.category.name if p.category else "Unknown",
+            category_color=p.category.color if p.category else "#888888",
+            quantity=sales["quantity"],
+            revenue=round(sales["revenue"], 2),
+        ))
+
+    # Sort by quantity descending, then revenue desc, then name asc
+    result.sort(key=lambda x: (x.quantity, x.revenue), reverse=False)
+    result.sort(key=lambda x: x.quantity, reverse=True)
+
+    return result[:limit]
+
+
+@router.get("/reports/payment-methods", response_model=list[PaymentMethodSummary])
+def get_payment_methods(
+    period: str = Query("day", description="day|week|month|all|custom"),
+    start_date: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    end_date: Optional[str] = Query(None, description="YYYY-MM-DD for custom range"),
+    db: Session = Depends(get_db),
+    user: UserModel = Depends(require_permission("admin.reports")),
+):
+    """Get payment method breakdown across all paid bills in the period."""
+    start = _parse_date(start_date if start_date else None)
+    end_dt = _parse_date(end_date if end_date else None) if end_date else None
+    if end_dt:
+        end_dt = end_dt + timedelta(days=1)
+    start, end = _get_date_range(period, start, end_dt)
+
+    query = (
         db.query(
             Payment.method,
-            func.sum(Payment.amount).label("amount"),
+            func.coalesce(func.sum(Payment.amount), 0).label("amount"),
             func.count(Payment.id).label("count"),
         )
         .join(Order, Order.id == Payment.order_id)
         .filter(
             Order.status == "paid",
-            Order.created_at >= start,
-            Order.created_at < end,
+            Payment.created_at >= start,
         )
-        .group_by(Payment.method)
-        .all()
     )
-    
+    if end:
+        query = query.filter(Payment.created_at < end)
+    results = query.group_by(Payment.method).all()
+
     total_amount = sum(float(r.amount or 0) for r in results)
-    
-    return [
-        PaymentMethodSummary(
-            method=r.method or "unknown",
-            amount=round(float(r.amount or 0), 2),
-            count=r.count or 0,
-            percentage=round((float(r.amount or 0) / total_amount * 100) if total_amount > 0 else 0, 1),
-        )
-        for r in results
-    ]
+
+    # Always show all three canonical methods, even with zero totals
+    methods = {getattr(r, "method", None) or "unknown": r for r in results}
+    canonical = ["cash", "card", "mobile"]
+    summary: list[PaymentMethodSummary] = []
+    for m in canonical:
+        r = methods.get(m)
+        amount = float(getattr(r, "amount", 0)) if r else 0.0
+        cnt = int(getattr(r, "count", 0)) if r else 0
+        summary.append(PaymentMethodSummary(
+            method=m,
+            amount=round(amount, 2),
+            count=cnt,
+            percentage=round((amount / total_amount * 100) if total_amount > 0 else 0, 1),
+        ))
+    # Add any non-canonical methods (e.g. legacy "unknown") if present
+    for m, r in methods.items():
+        if m in canonical:
+            continue
+        amount = float(getattr(r, "amount", 0))
+        cnt = int(getattr(r, "count", 0))
+        summary.append(PaymentMethodSummary(
+            method=m,
+            amount=round(amount, 2),
+            count=cnt,
+            percentage=round((amount / total_amount * 100) if total_amount > 0 else 0, 1),
+        ))
+    summary.sort(key=lambda x: x.amount, reverse=True)
+    return summary
 
 
 @router.get("/reports/bill-history", response_model=list[BillHistoryItem])
 def get_bill_history(
-    period: str = Query("day", description="day|week|month|custom"),
+    period: str = Query("day", description="day|week|month|all|custom"),
     start_date: Optional[str] = Query(None, description="YYYY-MM-DD"),
     end_date: Optional[str] = Query(None, description="YYYY-MM-DD for custom range"),
     status: Optional[str] = Query(None, description="Filter by status"),
-    limit: int = Query(100, description="Max bills to return"),
+    limit: int = Query(500, description="Max bills to return"),
     db: Session = Depends(get_db),
     user: UserModel = Depends(require_permission("admin.reports")),
 ):
-    """Get bill history (all non-void orders)."""
+    """Get bill history — all closed/paid bills, plus other status for audit."""
     start = _parse_date(start_date if start_date else None)
     end_dt = _parse_date(end_date if end_date else None) if end_date else None
     if end_dt:
         end_dt = end_dt + timedelta(days=1)
     start, end = _get_date_range(period, start, end_dt)
-    
-    query = db.query(Order).filter(
-        Order.status != "void",
-        Order.created_at >= start,
-        Order.created_at < end,
-    )
-    
-    if status:
+
+    # Default: show all non-void bills (paid/cancelled/closed/etc). When status is
+    # explicitly given, filter to it; "all" means every bill in the period.
+    query = db.query(Order).filter(Order.created_at >= start)
+    if end:
+        query = query.filter(Order.created_at < end)
+    if status and status != "all":
         query = query.filter(Order.status == status)
-    
+    else:
+        # Exclude the in-progress noise (open/accepted/preparing/ready/served)
+        # unless the caller asked for everything. "all" surfaces even those.
+        if not (status == "all"):
+            query = query.filter(Order.status.in_(("paid", "cancelled")))
+
     orders = query.order_by(Order.created_at.desc()).limit(limit).all()
     
     result = []

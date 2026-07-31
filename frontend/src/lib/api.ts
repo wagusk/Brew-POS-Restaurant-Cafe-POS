@@ -99,6 +99,7 @@ export interface SalesSummary {
   period: string;
   total_revenue: number;
   total_orders: number;
+  total_items_sold: number;
   avg_order_value: number;
   profit: number;
 }

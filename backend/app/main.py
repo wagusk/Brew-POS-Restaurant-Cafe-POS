@@ -102,6 +102,12 @@ def _migrate_station_columns() -> None:
             with engine.begin() as connection:
                 connection.execute(text("ALTER TABLE categories ADD COLUMN kind VARCHAR(20) DEFAULT 'kitchen' NOT NULL"))
 
+    if "products" in tables:
+        prod_cols = {c["name"] for c in inspect(engine).get_columns("products")}
+        if "kind" not in prod_cols:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE products ADD COLUMN kind VARCHAR(20) DEFAULT NULL"))
+
     if "order_items" in tables:
         oi_cols = {c["name"] for c in inspect(engine).get_columns("order_items")}
         if "station" not in oi_cols:
