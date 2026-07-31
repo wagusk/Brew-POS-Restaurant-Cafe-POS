@@ -1,4 +1,7 @@
 """Brew-POS FastAPI entry. Serves both API and static frontend bundle."""
+import logging
+import sys
+
 from fastapi import FastAPI
 from sqlalchemy import inspect, text
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,6 +15,19 @@ from app.db.seed import run as run_seed
 from app.models import User as UserModel
 from app.api import auth, menu, orders, admin, settings as settings_api
 from app.ws.hub import router as ws_router
+
+
+# ── Logging ──────────────────────────────────────────────────────────────
+# Uvicorn only wires its own access/error loggers by default. Our service
+# modules (`brewpos.printer`, `brewpos.orders`, ...) need their own root
+# so `log.info` actually reaches stdout (which systemd captures into
+# `~/.hermes/brewpos.log`). Idempotent; uvicorn re-runs this code path
+# per worker so this can't double-up handlers in practice.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    stream=sys.stdout,
+)
 
 
 def _bootstrap_default_admin() -> None:

@@ -485,3 +485,68 @@ $ python smoke_test_crud.py                              → 🎉 ALL CRUD SMOKE
 - [x] Added `.hermes/` to `.gitignore` so future plans never re-enter the repo
 - [x] Frontend lint + tsc + build pass 0/0 on the clean M18 main; live service still serving M18 (PID 366569)
 - [x] Decision: next real milestone is end-to-end **real-world smoke test** (3 terminals × 10 customers) — feature work paused until we know what real usage breaks
+
+
+### M19-prep — Sidebar layout (interim)
+- [x] Moved page-selection menu from horizontal top bar to vertical left sidebar in `Shell.tsx` — only changed the layout Box sx (width: 8% of viewport, flexDirection column, gap 1, py 1.5, overflowY auto, borderRight instead of borderBottom); existing map callback preserved
+- [x] Added `SIDEBAR_WIDTH = '8%'` constant
+- [x] Removed "Home" / Dashboard link entry from `links` array (and the now-unused DashboardIcon import + `link.path !== '/dashboard'` active check) — Dashboard no longer appears in sidebar
+- [x] Bumped sidebar Button minHeight 44 -> 56 for better touch target in vertical layout
+- [x] `npm run lint` -> 0/0 on .ts files; `npm run build` -> 1051 modules, dist bundle unchanged
+- [x] Ad-hoc verification: file structure balanced (6 Box opens / 6 Box closes + 1 self-close; 2 Button opens / 2 Button closes), all visibleLinks render in 8% sidebar column, `startIcon={<Icon />}` kept for horizontal-friendly display (icon + label), top AppBar (brand + role chip + logout) unchanged
+- [x] Dev server (:5173) reloaded via Vite HMR; HTTP 200 confirmed
+
+
+### M19-prep.2 — Sidebar + page display side-by-side
+- [x] Wrapped the sidebar Box and the page-display Box in a body-row Box (`display: 'flex', flexDirection: 'row', flex: 1, minHeight: 0`) between AppBar and the children — fixes the prior bug where sidebar+content were stacked vertically because the outer Box was `flexDirection: column`
+- [x] Page-display Box now `flex: 1, overflow: 'hidden', display: 'flex', minWidth: 0` (split multi-line to avoid an esbuild parse quirk with `<Box sx={{ ... minWidth: 0 }}>{children</Box>` inline)
+- [x] Comment updated to reflect side-by-side layout
+- [x] Ad-hoc verifier 12/12 PASS (since deleted): row wrapper + flexDirection row + sidebar Box nested + page-display Box nested with flex:1 + minWidth:0 + Dashboard link absent + SIDEBAR_WIDTH 8% constant present + sidebar still vertical flexDirection column
+- [x] `npm run build` -> 1051 modules, dist bundle unchanged; dev server (:5173) still healthy
+
+
+### M19-prep.3 — Skip dashboard on login, route to first allowed page
+- [x] `defaultPath()` in `src/app/App.tsx` no longer prefers `/dashboard`; priority order is now cashier > waiter > kitchen > bar > admin > settings (first entry the user has permission for wins)
+- [x] `defaultPath` is now `export`-ed so `LoginPage` can reuse the same logic
+- [x] `LoginPage` no longer hardcodes `nav('/dashboard')` after successful login — it calls `nav(defaultPath(user))` instead
+- [x] `NoAccess` "Back" button now navigates to `defaultPath(user)` (or `/login` if user is null) instead of `/dashboard`
+- [x] Added `'settings.view'` to `Permission` union in `src/lib/permissions.ts` and granted it to the `admin` role defaults so admin lands on `/settings` if/when a Settings page is added
+- [x] Ad-hoc verifier 9/9 PASS (since deleted): defaultPath has no dashboard shortcut, exported, priority order matches spec; LoginPage imports defaultPath + no `/dashboard` literal + uses `nav(defaultPath(user))`; Permission union + admin defaults include `settings.view`; NoAccess back button uses defaultPath
+- [x] `npm run build` -> 1051 modules, dist bundle unchanged; dev server (:5173) still healthy
+
+
+### M19 — Thermal printer integration (API + dry-run verified)
+- [x] Backend service `app/services/printer.py` — config CRUD + `_Sender` with `dummy` / `network` / `usb` / `dry_run` modes; loads config from shared `brewpos.settings.json`; never raises on write failure (returns `PrintResult.to_dict()`)
+- [x] Backend service `app/services/escpos.py` — stdlib-only ESC/POS byte builder (`TicketBuilder`, `kitchen_ticket_bytes`, `receipt_bytes`) for 58 / 80mm paper; `CP437` codepage; `INIT` reset on every ticket
+- [x] Backend service `app/services/tickets.py` (NEW) — pure `Order → bytes` helpers: `build_kitchen_ticket(db, order)`, `build_customer_receipt(db, order)`, `build_test_ticket(db)`
+- [x] Three new admin endpoints on `/api/admin/settings/printer`:
+  - `GET`  returns the merged config (`mode`, `network`, `usb`, `paper`, `auto_print`, `dry_run`)
+  - `PUT`  accepts a partial Pydantic `PrinterSettingsIn`; rejects unknown `mode`; persists through `printer.update_config`
+  - `POST /api/admin/settings/printer/test` — fires a tiny test ticket, returns the `PrintResult`
+- [x] `POST /api/orders/checkout` — after WS broadcast, calls `_fire_kitchen_ticket(db, order)` (fire-and-forget; failures logged at warning, never raise)
+- [x] `POST /api/orders/{id}/close` — after WS broadcast, calls `_fire_customer_receipt(db, order)` (fire-and-forget)
+- [x] `app/main.py` — added `logging.basicConfig(level=INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s", stream=stdout)` so `brewpos.printer` / `brewpos.orders` loggers actually surface in `~/.hermes/brewpos.log` (uvicorn only wires its own loggers)
+- [x] Backend `from app.main import app` OK; routes grow from 46 → 49 (the 3 new printer routes + `_stats/today` already existing)
+- [x] Live service restarted via `systemctl --user restart brewpos.service`; health `200`; `/api/admin/settings/printer` returns the configured defaults
+- [x] Ad-hoc verifier 11/11 PASS (since deleted):
+  1. backend healthy
+  2. admin login (PIN 9999)
+  3. GET `/printer` returns `mode=dummy, dry_run=false`
+  4. PUT `/printer` merges `dry_run=true` + `auto_print` on both events
+  5. POST `/printer/test` returns `{ok:true, bytes_written:311, ...}`
+  6. waiter + cashier + kitchen tokens issued
+  7. menu has 25 products
+  8. 8 tables exist
+  9. POST `/checkout` (Table 5, Americano × 1) → 200, order #46 created, kitchen ticket auto-fired → 227 bytes in `brewpos.log`
+  10. POST `/accept` (kitchen) → 200, status accepted
+  11. POST `/close` (cashier, cash, tendered=total) → 200, order paid, customer receipt auto-fired → 582 bytes in `brewpos.log`
+- [x] Log evidence in `~/.hermes/brewpos.log` after the verifier:
+  - `INFO brewpos.printer printer [dry-run] 311 bytes: b'\\x1b@\\x1bt\\x01\\x1ba\\x01\\x1bE\\x01\\x1d!\\x11Brew-POS\\n…'`
+  - `INFO brewpos.printer printer [dry-run] 227 bytes: b'\\x1b@\\x1bt\\x01\\x1ba\\x01\\x1bE\\x01\\x1d!\\x11#46\\n\\x1d!\\x00\\x1bE\\x00\\x1ba\\x00\\x1ba\\x01\\x1bE\\x01\\x1d!\\x00Tabl…'`  ← kitchen ticket for order #46
+  - `INFO brewpos.printer printer [dry-run] 582 bytes: b'\\x1b@\\x1bt\\x01\\x1ba\\x01\\x1bE\\x01\\x1d!\\x00Brew-POS\\n\\x1d!\\x00…'`  ← customer receipt for order #46
+- [x] Frontend `npm run build` -> 1051 modules, dist bundle unchanged (no frontend changes in M19)
+- [ ] Out of scope — next milestone (M20):
+  - Admin Settings page form (mode radios, network host/port, paper width, header/footer, dry_run toggle, auto_print checkboxes, Test Print button)
+  - Cashier re-print last receipt button
+  - Kitchen re-print last ticket button
+  - Printer status indicator on the cashier screen

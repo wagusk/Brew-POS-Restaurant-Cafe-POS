@@ -1,4 +1,6 @@
 """Orders: checkout, list, status updates, accept, close, cancel."""
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -15,7 +17,44 @@ from app.services import (
 from app.schemas import AppendItemsIn
 from app.ws import manager
 
+log = logging.getLogger("brewpos.orders")
+
 router = APIRouter(prefix="/api/orders", tags=["orders"])
+
+
+def _fire_kitchen_ticket(db: Session, order) -> None:
+    """Print the kitchen chit if auto-print-on-send is enabled.
+
+    Never raises. A print failure is logged at warning and otherwise
+    silently dropped — the order must remain billable regardless of
+    whether the chit reaches the kitchen thermal printer.
+    """
+    try:
+        from app.services import tickets, printer
+        payload = tickets.build_kitchen_ticket(db, order)
+        result = printer.auto_print_on_event("on_send_to_kitchen", payload)
+        if result is not None and not result.ok:
+            log.warning(
+                "kitchen ticket for order #%s failed: %s",
+                order.number, result.error,
+            )
+    except Exception as e:  # never let printer failures escape the endpoint
+        log.warning("kitchen ticket for order #%s raised: %s", order.number, e)
+
+
+def _fire_customer_receipt(db: Session, order) -> None:
+    """Print the customer receipt if auto-print-on-payment is enabled."""
+    try:
+        from app.services import tickets, printer
+        payload = tickets.build_customer_receipt(db, order)
+        result = printer.auto_print_on_event("on_payment", payload)
+        if result is not None and not result.ok:
+            log.warning(
+                "customer receipt for order #%s failed: %s",
+                order.number, result.error,
+            )
+    except Exception as e:
+        log.warning("customer receipt for order #%s raised: %s", order.number, e)
 
 
 @router.post("/checkout", response_model=OrderOut)
@@ -31,6 +70,7 @@ async def checkout(payload: CheckoutIn, db: Session = Depends(get_db), user: Use
         raise HTTPException(400, str(e))
     out = to_order_out(order)
     await manager.broadcast("order_created", out.model_dump())
+    _fire_kitchen_ticket(db, order)
     return out
 
 
@@ -138,6 +178,7 @@ async def close_endpoint(order_id: int, payload: CloseOrderIn, db: Session = Dep
         raise HTTPException(400, str(e))
     out = to_order_out(order)
     await manager.broadcast("order_updated", out.model_dump())
+    _fire_customer_receipt(db, order)
     return out
 
 

@@ -34,6 +34,13 @@ from app.core.config import (
 from app.core.security import require_role
 from app.models import User as UserModel
 from app.services.crud import count_products, count_users
+from app.services.printer import (
+    DEFAULT_CONFIG as PRINTER_DEFAULTS,
+    PrintResult,
+    get_config as get_printer_config,
+    print_bytes,
+    update_config as update_printer_config,
+)
 
 router = APIRouter(prefix="/api/admin/settings", tags=["settings"])
 
@@ -235,3 +242,73 @@ def import_database(payload: ImportIn, db: Session = Depends(get_db), user: User
     # Swap engine so subsequent reads use the new file.
     reload_engine(url)
     return _build_settings_out(db)
+
+
+# ── Printer settings ─────────────────────────────────────────────────
+class PrinterSettingsOut(BaseModel):
+    """Mirror of `printer.DEFAULT_CONFIG`. Returned by GET so the
+    frontend (and the admin curl-driven smoke test) always sees a
+    fully-defaulted config, even on a brand-new install.
+    """
+    mode: str
+    network: dict
+    usb: dict
+    paper: dict
+    auto_print: dict
+    dry_run: bool
+
+
+class PrinterSettingsIn(BaseModel):
+    """PATCH-style input. Every field optional; missing fields are
+    left untouched on disk.
+    """
+    mode: str | None = None
+    network: dict | None = None
+    usb: dict | None = None
+    paper: dict | None = None
+    auto_print: dict | None = None
+    dry_run: bool | None = None
+
+    @field_validator("mode")
+    @classmethod
+    def _mode_allowed(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        allowed = ("dummy", "network", "usb")
+        if v not in allowed:
+            raise ValueError(f"mode must be one of {allowed}")
+        return v
+
+
+class PrintResultOut(BaseModel):
+    ok: bool
+    mode: str
+    dry_run: bool
+    bytes_written: int
+    elapsed_ms: int
+    error: str | None = None
+
+
+@router.get("/printer", response_model=PrinterSettingsOut)
+def get_printer_settings(user: UserModel = Depends(require_role("admin"))):
+    cfg = get_printer_config()
+    return PrinterSettingsOut(**cfg)
+
+
+@router.put("/printer", response_model=PrinterSettingsOut)
+def update_printer_settings(payload: PrinterSettingsIn, user: UserModel = Depends(require_role("admin"))):
+    patch = {k: v for k, v in payload.model_dump().items() if v is not None}
+    cfg = update_printer_config(patch)
+    return PrinterSettingsOut(**cfg)
+
+
+@router.post("/printer/test", response_model=PrintResultOut)
+def test_printer(db: Session = Depends(get_db), user: UserModel = Depends(require_role("admin"))):
+    """Fire a tiny test ticket through the configured sender. Returns
+    the PrintResult — including any error string — so the caller can
+    confirm the printer is reachable without parsing server logs.
+    """
+    from app.services.tickets import build_test_ticket
+    payload = build_test_ticket(db)
+    res: PrintResult = print_bytes(payload)
+    return PrintResultOut(**res.to_dict())
