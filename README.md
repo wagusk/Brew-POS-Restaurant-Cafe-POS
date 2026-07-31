@@ -310,6 +310,6 @@ evaluation). Running this in a production environment — i.e. using it to
 serve paying customers or operating a hosted service — requires a
 separate commercial license from the copyright holder.
 
-On **2030-07-31** (the Change Date), each release of this project
+On **2036-07-31** (the Change Date), each release of this project
 converts to the **Apache License 2.0**, at which point the restrictions
 above expire for that version.
