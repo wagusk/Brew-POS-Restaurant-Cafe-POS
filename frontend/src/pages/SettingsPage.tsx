@@ -36,14 +36,13 @@ const SHAPE = {
 };
 
 // ── Main menu color codes ────────────────────────────────────────────
-type MainKey = 'products' | 'tables' | 'tax' | 'database' | 'dbops';
+type MainKey = 'products' | 'tables' | 'tax' | 'database';
 
 const MAIN_COLOR: Record<MainKey, string> = {
   products: '#2b6cff',
   tables: '#0c8a7a',
   tax: '#e07b1a',
   database: '#5b6472',
-  dbops: '#5b6472',
 };
 
 interface MainItem {
@@ -56,8 +55,11 @@ const MAIN_ITEMS: MainItem[] = [
   { key: 'products', label: 'Products', icon: <RestaurantMenuIcon /> },
   { key: 'tables', label: 'Tables', icon: <TableRestaurantIcon /> },
   { key: 'tax', label: 'Tax', icon: <PercentIcon /> },
+  // Database + Database Ops are merged into one menu entry — both workspaces
+  // (URL editor + operation tiles) render stacked under the single "Database"
+  // tile so admins don't have to bounce between two near-identical grey
+  // buttons to manage the DB.
   { key: 'database', label: 'Database', icon: <StorageIcon /> },
-  { key: 'dbops', label: 'Database Ops', icon: <RefreshIcon /> },
 ];
 
 // ─────────────────────────────────────────────────────────────────────
@@ -269,13 +271,17 @@ export default function SettingsPage() {
           <TaxWorkspace color={color} />
         )}
         {main === 'database' && (
-          <DatabaseWorkspace color={color} />
+          <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            {/* Combined Database view: URL editor on top, operation tiles below.
+                flexDirection column lets each workspace keep its own internal
+                vertical scroll (overflowY:auto on the workspaces). */}
+            <DatabaseWorkspace color={color} />
+            <Divider sx={{ borderColor: 'border.soft' }} />
+            <DbOpsWorkspace color={color} />
+        </Box>
         )}
-        {main === 'dbops' && (
-          <DbOpsWorkspace color={color} />
-        )}
-      </Box>
-    </Box>
+     </Box>
+   </Box>
   );
 }
 

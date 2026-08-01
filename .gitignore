@@ -28,3 +28,6 @@ Thumbs.db
 
 # Hermes planning artifacts (local-only)
 .hermes/
+
+# Local progress log — kept on disk, never pushed
+PROGRESS.md

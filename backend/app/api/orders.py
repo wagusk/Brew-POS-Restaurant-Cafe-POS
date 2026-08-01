@@ -211,6 +211,58 @@ async def cancel_endpoint(
     return out
 
 
+@router.post("/{order_id}/print-ticket")
+async def reprint_ticket_endpoint(
+    order_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("kitchen.view")),
+):
+    """Manually re-fire the kitchen chit for an order.
+
+    Same fire-and-forget pattern as the auto-print on /checkout, but the
+    result is returned to the caller so the UI can show a success/error
+    toast. Used when the printer jams, the chit is lost, or the kitchen
+    needs a fresh copy of the prep list.
+    """
+    order = get_order(db, order_id)
+    if not order:
+        raise HTTPException(404, "Not found")
+    try:
+        from app.services import tickets, printer
+        payload = tickets.build_kitchen_ticket(db, order)
+        result = printer.print_bytes(payload)
+    except Exception as e:
+        log.warning("manual ticket reprint for order #%s raised: %s", order.number, e)
+        raise HTTPException(500, f"Print failed: {e}") from e
+    return result.to_dict()
+
+
+@router.post("/{order_id}/print-receipt")
+async def reprint_receipt_endpoint(
+    order_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("cashier.view")),
+):
+    """Manually re-fire the customer receipt for a closed (paid) order.
+
+    Used when the customer lost their receipt, the printer jammed, or
+    the cashier needs a copy for the till tape.
+    """
+    order = get_order(db, order_id)
+    if not order:
+        raise HTTPException(404, "Not found")
+    if order.status != "paid":
+        raise HTTPException(400, "Receipt can only be reprinted for paid orders")
+    try:
+        from app.services import tickets, printer
+        payload = tickets.build_customer_receipt(db, order)
+        result = printer.print_bytes(payload)
+    except Exception as e:
+        log.warning("manual receipt reprint for order #%s raised: %s", order.number, e)
+        raise HTTPException(500, f"Print failed: {e}") from e
+    return result.to_dict()
+
+
 @router.get("/_stats/today", response_model=StatsOut)
 def stats(db: Session = Depends(get_db), user: User = Depends(require_role("admin", "cashier"))):
     return StatsOut(**today_stats(db))

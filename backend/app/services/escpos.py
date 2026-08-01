@@ -227,14 +227,18 @@ def receipt_bytes(
     tendered: float | None,
     change_due: float | None,
     paper_width: int = 80,
-    header_text: str = "",
-    footer_text: str = "Thank you!",
+    header_lines: Iterable[str] = (),
+    footer_lines: Iterable[str] = (),
+    cut_paper: bool = True,
 ) -> bytes:
     """Build the ESC/POS byte stream for a customer receipt."""
     paper = Paper.from_mm(paper_width)
     b = TicketBuilder(width=paper)
-    if header_text:
-        b.header(header_text, bold=True, double_size=False, center=True)
+    # Multi-line header (skip blanks). Rendered bold, normal size, centered.
+    for line in header_lines:
+        if line and line.strip():
+            b.header(line, bold=True, double_size=False, center=True)
+    # Business name + order number always appear (system identity, not user-editable).
     b.header(business_name, bold=True, double_size=True, center=True)
     b.text(f"Order #{order_number}", center=True)
     if table_label:
@@ -257,8 +261,13 @@ def receipt_bytes(
     if change_due is not None and change_due > 0:
         b.row("Change", fmt_currency(change_due))
     b.feed(1)
-    if footer_text:
-        b.footer(footer_text, center=True)
+    # Multi-line footer (skip blanks).
+    for line in footer_lines:
+        if line and line.strip():
+            b.footer(line, center=True)
     b.feed(2)
-    b.cut()
+    if cut_paper:
+        b.cut()
+    else:
+        b.cut(partial=True)
     return b.build()

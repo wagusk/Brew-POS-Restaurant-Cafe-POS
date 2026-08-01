@@ -26,6 +26,7 @@ Then open `http://localhost:8000` on any terminal.
 - **Stats** — Today orders, revenue, average ticket, open tickets.
 - **Single-file SQLite** — `backend/brewpos.db`. Portable, no external DB.
 - **No Docker required** — Pure Python + Node +11. Runs anywhere.
+- **Admin Settings page** — `/settings` (admin-only): Products, Tables, Tax, and a unified Database menu (URL editor + Reload / Reset / Restore / Export / Import operations stacked under one tile).
 
 ---
 

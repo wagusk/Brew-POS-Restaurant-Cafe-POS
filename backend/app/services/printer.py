@@ -53,7 +53,7 @@ class PrintResult:
 
 # ── Config ────────────────────────────────────────────────────────────
 DEFAULT_CONFIG: dict[str, Any] = {
-    "mode": "dummy",          # 'dummy' | 'network' | 'usb'
+    "mode": "dummy",          # 'dummy' | 'network' | 'usb' | 'dry_run'
     "network": {
         "host": "127.0.0.1",
         "port": 9100,
@@ -65,8 +65,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "paper": {
         "width_mm": 80,
-        "header_text": "Brew-POS",
-        "footer_text": "Thank you!",
+        # Multi-line header/footer rendered at the top/bottom of every receipt
+        # and (for the header) on kitchen tickets. Editable from /settings.
+        # Each list item is one printed line; empty strings are skipped.
+        "header_lines": ["Brew-POS"],
+        "footer_lines": ["Thank you!"],
+        "cut_paper": True,  # GS V 0 (full cut) at end of receipt
     },
     "auto_print": {
         "on_send_to_kitchen": True,
@@ -81,11 +85,24 @@ def _load_config() -> dict[str, Any]:
 
     The file also holds tax_rate; we only mutate the 'printer' key. Missing
     key → start from DEFAULT_CONFIG. Corrupt JSON → log warning, fall back.
+
+    Legacy single-string `header_text` / `footer_text` (M19) are auto-migrated
+    to the new multi-line `header_lines` / `footer_lines` lists so existing
+    installs keep working without a manual settings edit.
     """
     cfg = json.loads(json.dumps(DEFAULT_CONFIG))  # deep copy
     all_settings = _load_persisted()
     stored = all_settings.get("printer") if isinstance(all_settings, dict) else None
     if isinstance(stored, dict):
+        # Legacy single-string → list migration.
+        legacy = stored.get("paper", {}) if isinstance(stored.get("paper"), dict) else {}
+        if "header_lines" not in legacy and "header_text" in legacy:
+            legacy["header_lines"] = [legacy["header_text"]] if legacy["header_text"] else []
+            legacy.pop("header_text", None)
+        if "footer_lines" not in legacy and "footer_text" in legacy:
+            legacy["footer_lines"] = [legacy["footer_text"]] if legacy["footer_text"] else []
+            legacy.pop("footer_text", None)
+        stored["paper"] = legacy
         # Merge per-section so missing keys keep their defaults.
         for section, default_vals in DEFAULT_CONFIG.items():
             sec_in = stored.get(section)
