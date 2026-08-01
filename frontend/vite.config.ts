@@ -14,5 +14,19 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    // With route-level React.lazy() in App.tsx, the heaviest framework
+    // groups get split into stable, cacheable vendor chunks.
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-core': ['react', 'react-dom', 'react-router-dom'],
+          'mui-core': ['@mui/material', '@emotion/react', '@emotion/styled'],
+          'vendor-redux': ['@reduxjs/toolkit', 'react-redux'],
+          'charts': ['recharts'],
+          'vendor-misc': ['axios'],
+        },
+      },
+    },
   },
 });

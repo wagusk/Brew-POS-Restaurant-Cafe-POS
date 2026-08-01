@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
+import { Suspense, lazy, useEffect } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { Box, Button, Typography } from '@mui/material';
+import { Box, Button, CircularProgress, Typography } from '@mui/material';
 
 import { useAppSelector, useAppDispatch } from '../store/hooks';
 import { setMenu } from '../store/menuSlice';
@@ -9,15 +9,26 @@ import { ws } from '../lib/ws';
 import { hasPermission, type Permission } from '../lib/permissions';
 import type { User } from '../types';
 
-import LoginPage from '../pages/LoginPage';
-import DashboardPage from '../pages/DashboardPage';
-import CashierPage from '../pages/CashierPage';
-import WaiterPage from '../pages/WaiterPage';
-import KitchenPage from '../pages/KitchenPage';
-import BarPage from '../pages/BarPage';
-import AdminPage from '../pages/AdminPage';
-import SettingsPage from '../pages/SettingsPage';
 import Shell from '../components/Shell';
+
+// Route-level code splitting — each page loads on demand instead of
+// being bundled into the single >1 MB main chunk.
+const LoginPage = lazy(() => import('../pages/LoginPage'));
+const DashboardPage = lazy(() => import('../pages/DashboardPage'));
+const CashierPage = lazy(() => import('../pages/CashierPage'));
+const WaiterPage = lazy(() => import('../pages/WaiterPage'));
+const KitchenPage = lazy(() => import('../pages/KitchenPage'));
+const BarPage = lazy(() => import('../pages/BarPage'));
+const AdminPage = lazy(() => import('../pages/AdminPage'));
+const SettingsPage = lazy(() => import('../pages/SettingsPage'));
+
+function PageFallback() {
+  return (
+    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', p: 4 }}>
+      <CircularProgress />
+   </Box>
+  );
+}
 
 function PermissionRoute({ permission, children }: { permission: Permission; children: React.ReactNode }) {
   const user = useAppSelector((state) => state.auth.user);
@@ -29,77 +40,81 @@ function RoleRouter() {
 
   if (!user) {
     return (
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="*" element={<Navigate to="/login" replace />} />
-     </Routes>
+      <Suspense fallback={<PageFallback />}>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="*" element={<Navigate to="/login" replace />} />
+       </Routes>
+     </Suspense>
     );
   }
 
   return (
     <Shell>
-      <Routes>
-        <Route path="/" element={<Navigate to={defaultPath(user)} replace />} />
-        <Route
-          path="/dashboard"
-          element={
-            <PermissionRoute permission="dashboard.view">
-              <DashboardPage />
-           </PermissionRoute>
-          }
-        />
-        <Route
-          path="/cashier"
-          element={
-            <PermissionRoute permission="cashier.view">
-              <CashierPage />
-           </PermissionRoute>
-          }
-        />
-        <Route
-          path="/waiter"
-          element={
-            <PermissionRoute permission="waiter.view">
-              <WaiterPage />
-           </PermissionRoute>
-          }
-        />
-        <Route
-          path="/kitchen"
-          element={
-            <PermissionRoute permission="kitchen.view">
-              <KitchenPage />
-           </PermissionRoute>
-          }
-        />
-        <Route
-          path="/bar"
-          element={
-            <PermissionRoute permission="bar.view">
-              <BarPage />
-           </PermissionRoute>
-          }
-        />
-        <Route
-          path="/admin"
-          element={
-            <PermissionRoute permission="admin.view">
-              <AdminPage />
+      <Suspense fallback={<PageFallback />}>
+        <Routes>
+          <Route path="/" element={<Navigate to={defaultPath(user)} replace />} />
+          <Route
+            path="/dashboard"
+            element={
+              <PermissionRoute permission="dashboard.view">
+                <DashboardPage />
             </PermissionRoute>
-          }
-        />
-        <Route
-          path="/settings"
-          element={
-            <PermissionRoute permission="settings.view">
-              <SettingsPage />
+            }
+          />
+          <Route
+            path="/cashier"
+            element={
+              <PermissionRoute permission="cashier.view">
+                <CashierPage />
             </PermissionRoute>
-          }
-        />
-        <Route path="/login" element={<Navigate to={defaultPath(user)} replace />} />
-        <Route path="*" element={<Navigate to={defaultPath(user)} replace />} />
-     </Routes>
-   </Shell>
+            }
+          />
+          <Route
+            path="/waiter"
+            element={
+              <PermissionRoute permission="waiter.view">
+                <WaiterPage />
+            </PermissionRoute>
+            }
+          />
+          <Route
+            path="/kitchen"
+            element={
+              <PermissionRoute permission="kitchen.view">
+                <KitchenPage />
+             </PermissionRoute>
+            }
+          />
+          <Route
+            path="/bar"
+            element={
+              <PermissionRoute permission="bar.view">
+                <BarPage />
+            </PermissionRoute>
+            }
+          />
+          <Route
+            path="/admin"
+            element={
+              <PermissionRoute permission="admin.view">
+                <AdminPage />
+             </PermissionRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <PermissionRoute permission="settings.view">
+                <SettingsPage />
+             </PermissionRoute>
+            }
+          />
+          <Route path="/login" element={<Navigate to={defaultPath(user)} replace />} />
+          <Route path="*" element={<Navigate to={defaultPath(user)} replace />} />
+       </Routes>
+     </Suspense>
+  </Shell>
   );
 }
 

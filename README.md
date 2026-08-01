@@ -88,65 +88,88 @@ rm backend/brewpos.db
 
 ```
 Brew-POS/
-├── run.sh                     # ONE command to run (auto-install, build, seed, serve)
-├── requirements.txt           # Python deps
+├── run.sh                       # ONE command to run (auto-install, build, seed, serve)
+├── requirements.txt             # Python deps
+├── LICENSE                      # Business Source License 1.1
+├── PROGRESS.md                  # Build progress log
 ├── backend/
 │   ├── app/
-│   │   ├── main.py            # FastAPI entry; serves API + static frontend
+│   │   ├── main.py              # FastAPI entry; serves API + static frontend
 │   │   ├── core/
-│   │   │   ├── config.py      # Settings (BREWPOS_* env vars)
-│   │   │   └── security.py    # JWT + bcrypt PIN hashing
+│   │   │   ├── config.py        # Settings (BREWPOS_* env vars)
+│   │   │   ├── security.py      # JWT + bcrypt PIN hashing
+│   │   │   └── permissions.py   # Permission helpers used by services
 │   │   ├── db/
-│   │   │   ├── session.py     # SQLAlchemy engine
-│   │   │   └── seed.py        # Demo data seeder
-│   │   ├── models/__init__.py # ORM models (User, Product, Order, etc.)
-│   │   ├── schemas/__init__.py # Pydantic DTOs
-│   │   ├── services/__init__.py # Business logic
+│   │   │   ├── session.py       # SQLAlchemy engine
+│   │   │   └── seed.py          # Demo data seeder
+│   │   ├── models/__init__.py   # ORM models (User, Product, Order, etc.)
+│   │   ├── schemas/__init__.py  # Pydantic DTOs
+│   │   ├── services/
+│   │   │   ├── crud.py          # Generic create/read/update/delete helpers
+│   │   │   ├── tickets.py       # Order ticket lifecycle
+│   │   │   ├── printer.py       # Receipt printing dispatch
+│   │   │   └── escpos.py        # ESC/POS command builder
 │   │   ├── api/
-│   │   │   ├── auth.py        # /api/auth/login
-│   │   │   ├── menu.py        # /api/menu, /api/tables
-│   │   │   └── orders.py      # /api/orders/* (checkout, list, status)
+│   │   │   ├── auth.py          # /api/auth/login
+│   │   │   ├── menu.py          # /api/menu, /api/tables
+│   │   │   ├── orders.py        # /api/orders/* (checkout, list, status)
+│   │   │   ├── admin.py         # /api/admin/* (users, reports)
+│   │   │   └── settings.py      # /api/settings/*
 │   │   └── ws/
-│   │       ├── __init__.py    # ConnectionManager
-│   │       └── hub.py         # /ws WebSocket route
-│   ├── scripts/               # (placeholder)
-│   └── brewpos.db             # SQLite, auto-created
+│   │       ├── __init__.py      # ConnectionManager
+│   │       └── hub.py           # /ws WebSocket route
+│   ├── scripts/                 # (placeholder)
+│   ├── brewpos.db               # SQLite, auto-created
+│   └── brewpos.settings.json    # Persisted runtime settings
 ├── frontend/
 │   ├── index.html
 │   ├── package.json
-│   ├── vite.config.ts
-│   ├── tsconfig.json
+│   ├── package-lock.json
+│   ├── vite.config.ts           # Vite + React + manualChunks (vendor splitting)
+│   ├── tsconfig.{json,app.json,node.json}
+│   ├── public/                  # Static assets copied verbatim to dist/
 │   ├── src/
-│   │   ├── main.tsx           # React root + Providers
-│   │   ├── app/App.tsx        # Router + role-based gating
+│   │   ├── main.tsx             # React root + Providers
+│   │   ├── app/App.tsx          # Router + role-based gating (React.lazy page splitting)
 │   │   ├── components/
-│   │   │   ├── Shell.tsx      # Top bar (logo, role, sync, logout)
+│   │   │   ├── Shell.tsx        # Top bar (logo, role, sync, logout) + sidebar
 │   │   │   └── ModifierModal.tsx
-│   │   ├── pages/
-│   │   │   ├── LoginPage.tsx  # PIN pad
-│   │   │   ├── CashierPage.tsx # Three-column cashier
-│   │   │   ├── WaiterPage.tsx # Floor plan + take order
-│   │   │   ├── KitchenPage.tsx # Live ticket board
-│   │   │   └── AdminPage.tsx  # Stats dashboard
+│   │   ├── pages/               # Each is lazy-loaded — see vite.config.ts manualChunks
+│   │   │   ├── LoginPage.tsx
+│   │   │   ├── DashboardPage.tsx
+│   │   │   ├── CashierPage.tsx
+│   │   │   ├── WaiterPage.tsx
+│   │   │   ├── KitchenPage.tsx
+│   │   │   ├── BarPage.tsx
+│   │   │   ├── AdminPage.tsx
+│   │   │   └── SettingsPage.tsx
 │   │   ├── store/
 │   │   │   ├── index.ts
 │   │   │   ├── hooks.ts
-│   │   │   ├── authSlice.ts   # JWT + user
-│   │   │   ├── cartSlice.ts   # Cart state
-│   │   │   └── menuSlice.ts   # Menu + tables cache
+│   │   │   ├── authSlice.ts     # JWT + user
+│   │   │   ├── cartSlice.ts     # Cart state
+│   │   │   └── menuSlice.ts     # Menu + tables cache
 │   │   ├── lib/
-│   │   │   ├── api.ts         # Axios + endpoints
-│   │   │   └── ws.ts          # WebSocket client with reconnect
-│   │   ├── theme/index.ts     # MUI dark theme
-│   │   ├── types/index.ts     # Shared TS types
+│   │   │   ├── api.ts           # Axios + endpoints
+│   │   │   ├── ws.ts            # WebSocket client with reconnect
+│   │   │   └── permissions.ts   # hasPermission(user, perm) helper
+│   │   ├── theme/index.ts       # MUI dark theme
+│   │   ├── types/index.ts       # Shared TS types
 │   │   └── index.css
-│   └── dist/                  # Built bundle (gitignored)
+│   └── dist/                    # Built bundle (gitignored)
 ├── scripts/
-│   ├── dev.sh                 # Dev mode (Vite HMR + backend reload)
-│   └── rebuild-frontend.sh
-├── docs/
-│   └── API.md                 # Full API reference
-└── PROGRESS.md                # Build progress log
+│   ├── dev.sh                   # Dev mode (Vite HMR + backend reload)
+│   ├── rebuild-frontend.sh      # Force a fresh `npm run build`
+│   ├── install-services.sh      # Install systemd user services
+│   ├── brewpos.service          # systemd unit (production)
+│   ├── brewpos-dev.service      # systemd unit (dev mode)
+│   ├── open-firewall.sh         # Open :8000 / :5173 in firewalld
+│   ├── port-8080-server.sh      # Static file server on :8080
+│   └── port-8080.service        # systemd unit for :8080 server
+└── docs/
+    ├── API.md                   # Full API reference
+    ├── ARCHITECTURE.md          # System design notes
+    └── INSTALL.md               # Deployment guide
 ```
 
 ---
@@ -286,6 +309,8 @@ Open `http://localhost:8000/docs` for interactive Swagger UI.
 ---
 
 ## Roadmap
+
+**To be added: printing support, report printing, and etc.**
 
 - [ ] Menu CRUD via admin UI
 - [ ] User management via admin UI
