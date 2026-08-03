@@ -48,12 +48,23 @@ def _build_item_snapshot(db: Session, ci: CartItemIn) -> tuple[OrderItem, list[O
     product = db.get(Product, ci.product_id)
     if not product or not product.active:
         raise ValueError(f"Product {ci.product_id} unavailable")
-    # Snapshot the station from the product's category.kind so the bill
-    # preserves the routing decision at order time. `kind=both` defaults
-    # to kitchen (the legacy station) so old orders remain visible to
-    # the kitchen board.
-    cat_kind = product.category.kind if product.category else "kitchen"
-    station = "bar" if cat_kind == "bar" else "kitchen"
+    # Snapshot the station so the bill preserves the routing decision at
+    # order time. The single value is one of:
+    #   "kitchen"  → only kitchen display sees this item
+    #   "bar"      → only bar display sees this item
+    #   "both"     → both displays see this item as the SAME logical line
+    #                (so a "coffee + dessert" combo shows on both boards
+    #                 with one shared progress)
+    # Resolution order: product.kind (per-item override) → category.kind
+    # → "kitchen" (the legacy default so old products keep routing).
+    product_kind = product.kind
+    category_kind = product.category.kind if product.category else "kitchen"
+    if product_kind in ("kitchen", "bar", "both"):
+        station = product_kind
+    elif category_kind in ("kitchen", "bar", "both"):
+        station = category_kind
+    else:
+        station = "kitchen"
     item = OrderItem(
         product_id=product.id,
         name=product.name,
@@ -234,8 +245,17 @@ def list_orders(db: Session, status: str | None = None, limit: int = 100, statio
     if status:
         stmt = stmt.where(Order.status == status)
     if station:
-        # Return orders that have at least one item on the requested station.
-        stmt = stmt.where(Order.items.any(OrderItem.station == station))
+        # Return orders that have at least one item the requested station
+        # is responsible for. "both" items count for every station so the
+        # same order appears on both displays (kitchen sees it for the
+        # food items, bar sees it for the drinks, both see the "both"
+        # items in the middle).
+        if station == "kitchen":
+            stmt = stmt.where(Order.items.any(OrderItem.station.in_(("kitchen", "both"))))
+        elif station == "bar":
+            stmt = stmt.where(Order.items.any(OrderItem.station.in_(("bar", "both"))))
+        else:
+            stmt = stmt.where(Order.items.any(OrderItem.station == station))
     return db.scalars(stmt).all()
 
 
@@ -250,6 +270,7 @@ def to_order_out(o: Order) -> OrderOut:
             OrderItemOut(
                 id=i.id, product_id=i.product_id, name=i.name, price=i.price,
                 qty=i.qty, status=i.status, notes=i.notes, sent_at=i.sent_at,
+                station=i.station or "kitchen",
                 modifiers=[OrderItemModOut(id=m.id, name=m.name, price_delta=m.price_delta) for m in i.modifiers],
             ) for i in o.items
         ],

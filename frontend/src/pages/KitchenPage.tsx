@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Box, Paper, Typography, Button, Chip, Stack, Dialog, DialogTitle,
-  DialogContent, DialogActions, TextField, Snackbar, IconButton, CircularProgress,
+  DialogContent, DialogActions, TextField, Snackbar, CircularProgress,
   Alert, Tooltip,
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -76,7 +76,10 @@ export default function KitchenPage() {
   };
 
   const reload = () => {
-    Orders.list().then((all) => {
+    // station=kitchen returns orders that have at least one kitchen
+    // item OR a "both" item. The item filter below strips bar-only lines
+    // so the kitchen sees only what it needs to cook.
+    Orders.list(undefined, 'kitchen').then((all) => {
       setOrders(all.filter((o) => ['open', 'accepted', 'preparing', 'ready'].includes(o.status)));
     }).catch(() => {});
   };
@@ -248,7 +251,7 @@ export default function KitchenPage() {
              </Box>
 
               <Stack spacing={1} sx={{ mt: 1.5, flex: 1 }}>
-                {o.items.map((i) => (
+                {o.items.filter((i: any) => (i.station ?? 'kitchen') !== 'bar').map((i) => (
                   <Paper
                     key={i.id}
                     variant="outlined"
@@ -356,6 +359,12 @@ export default function KitchenPage() {
                 ))}
              </Stack>
               <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
+                {/* M25 — Mark All Served (primary, 60%) + Reprint ticket (40%),
+                    both touch-sized (minHeight 52). The Reprint button is now
+                    a labeled contained button (not just an IconButton) so
+                    the hardware loop is visible: tapping it shows the
+                    kitchen the printer actually fired (byte count surfaces
+                    in the snack). */}
                 <Button
                   fullWidth
                   variant="contained"
@@ -363,30 +372,32 @@ export default function KitchenPage() {
                   size="large"
                   startIcon={<CheckCircleIcon />}
                   onClick={() => completeOrder(o.id)}
-                  sx={{ borderRadius: RADIUS, minHeight: 52, fontWeight: 700 }}
+                  sx={{
+                    flex: 1.5,
+                    borderRadius: RADIUS, minHeight: 52, fontWeight: 700,
+                  }}
                 >
                   Mark All Served
-              </Button>
-                <Tooltip title="Reprint kitchen ticket">
-                  <span>
-                    <IconButton
-                      color="primary"
-                      disabled={reprintingId === o.id}
-                      onClick={() => reprint(o.id)}
-                      sx={{
-                        borderRadius: RADIUS, minWidth: 52, minHeight: 52,
-                        border: '1px solid', borderColor: 'primary.main',
-                        bgcolor: 'primary.main', color: 'common.white',
-                        '&:hover': { bgcolor: 'primary.main', filter: 'brightness(0.92)' },
-                      }}
-                    >
-                      {reprintingId === o.id
-                        ? <CircularProgress size={20} sx={{ color: 'common.white' }} />
-                        : <PrintOutlinedIcon />}
-                </IconButton>
-              </span>
-            </Tooltip>
-             </Box>
+                </Button>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  size="large"
+                  startIcon={reprintingId === o.id
+                    ? <CircularProgress size={18} sx={{ color: 'common.white' }} />
+                    : <PrintOutlinedIcon />}
+                  disabled={reprintingId === o.id}
+                  onClick={() => reprint(o.id)}
+                  sx={{
+                    flex: 1,
+                    borderRadius: RADIUS, minHeight: 52, fontWeight: 700,
+                    bgcolor: 'primary.main',
+                    '&:hover': { bgcolor: 'primary.main', filter: 'brightness(0.92)' },
+                  }}
+                >
+                  {reprintingId === o.id ? 'Reprinting…' : 'Reprint'}
+                </Button>
+              </Box>
            </Paper>
           );
         })}

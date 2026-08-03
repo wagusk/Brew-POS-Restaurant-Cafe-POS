@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Box, Paper, Typography, Grid, Button, Chip,
-  Dialog, DialogTitle, DialogContent, TextField,
+  Dialog, DialogTitle, DialogContent, DialogActions, TextField,
   Switch, FormControlLabel, Stack, Divider, InputAdornment,
-  Alert, CircularProgress, Snackbar,
+  Alert, CircularProgress, Snackbar, IconButton, Tooltip,
 } from '@mui/material';
 import RestaurantMenuIcon from '@mui/icons-material/RestaurantMenu';
-import TableRestaurantIcon from '@mui/icons-material/TableRestaurant';
 import SoupKitchenIcon from '@mui/icons-material/SoupKitchen';
 import LocalBarIcon from '@mui/icons-material/LocalBar';
 import TuneIcon from '@mui/icons-material/Tune';
@@ -28,6 +27,8 @@ import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import PrintOutlinedIcon from '@mui/icons-material/PrintOutlined';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
+import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
 import { Admin, Settings, Printer, Discount, type SettingsPayload, type PrinterConfig, type PrintResult, type DiscountPolicy, type DiscountPreset } from '../lib/api';
 import type { AdminCategory, AdminProduct, AdminTable } from '../lib/api';
 
@@ -43,14 +44,12 @@ const SHAPE = {
 };
 
 // ── Main menu color codes ────────────────────────────────────────────
-type MainKey = 'products' | 'tables' | 'taxdiscounts' | 'database' | 'printer';
+// M25 — SettingsPage now only owns Database + Printer. Products / Tables /
+// Tax & Discounts were moved to AdminPage (they're admin-owned settings,
+// not "device / environment" settings). MainKey narrowed accordingly.
+type MainKey = 'database' | 'printer';
 
 const MAIN_COLOR: Record<MainKey, string> = {
-  products: '#2b6cff',
-  tables: '#0c8a7a',
-  // M21 — single color code for both tax + discount sections so they
-  // visually belong to the same admin workspace.
-  taxdiscounts: '#e07b1a',
   database: '#5b6472',
   printer: '#7b3aa8',
 };
@@ -62,17 +61,10 @@ interface MainItem {
 }
 
 const MAIN_ITEMS: MainItem[] = [
-  { key: 'products', label: 'Products', icon: <RestaurantMenuIcon /> },
-  { key: 'tables', label: 'Tables', icon: <TableRestaurantIcon /> },
-  // M21 — single menu entry unifies the old "Tax" + "Discount"
-  // workspaces. Tax is configurable manually (no fixed slider/chip
-  // template); discount is a CRUD list of preset buttons the cashier
-  // can tap on a closed bill.
-  { key: 'taxdiscounts', label: 'Tax & Discounts', icon: <PercentIcon /> },
   // Database + Database Ops are merged into one menu entry — both workspaces
-  // (URL editor + operation tiles) render stacked under the single "Database"
-  // tile so admins don't have to bounce between two near-identical grey
-  // buttons to manage the DB.
+  // (URL editor + operation tiles) render side-by-side under the single
+  // "Database" tile (M25 row collapse) so admins don't have to bounce
+  // between two near-identical grey buttons to manage the DB.
   { key: 'database', label: 'Database', icon: <StorageIcon /> },
   // Printer config — mode (dummy/network/usb), paper, header/footer,
   // auto-print toggles, dry-run. Test Print button fires a real ticket
@@ -123,7 +115,7 @@ function ColumnHeader({
 // Reusable: ListItemButton
 // ─────────────────────────────────────────────────────────────────────
 function ListItemButton({
-  active, color, label, sublabel, onClick, accent, leading,
+  active, color, label, sublabel, onClick, accent, leading, trailing,
 }: {
   active: boolean;
   color: string;
@@ -132,6 +124,7 @@ function ListItemButton({
   onClick: () => void;
   accent?: boolean;
   leading?: React.ReactNode;
+  trailing?: React.ReactNode;
 }) {
   return (
     <Box
@@ -184,7 +177,19 @@ function ListItemButton({
           </Typography>
         )}
       </Box>
-      {active && <ChevronRightIcon sx={{ fontSize: 18, color }} />}
+      {/* Trailing actions (Edit / Delete) — stop propagation so clicking
+          them doesn't ALSO trigger the row's onClick (which selects the
+          category). Always rendered so admins can fix/delete without
+          first selecting. */}
+      {trailing && (
+        <Box
+          sx={{ display: 'flex', gap: 0.5, flexShrink: 0 }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {trailing}
+        </Box>
+      )}
+      {active && !trailing && <ChevronRightIcon sx={{ fontSize: 18, color }} />}
     </Box>
   );
 }
@@ -205,7 +210,7 @@ function ColumnEmpty({ message }: { message: string }) {
 // MAIN PAGE
 // ─────────────────────────────────────────────────────────────────────
 export default function SettingsPage() {
-  const [main, setMain] = useState<MainKey>('products');
+  const [main, setMain] = useState<MainKey>('database');
 
   const color = MAIN_COLOR[main];
 
@@ -279,24 +284,19 @@ export default function SettingsPage() {
         <Divider orientation="vertical" flexItem />
 
         {/* COLUMN 2+ — chosen workspace */}
-        {main === 'products' && (
-          <ProductsNestedWorkspace color={color} />
-        )}
-        {main === 'tables' && (
-          <TablesWorkspace color={color} />
-        )}
-        {main === 'taxdiscounts' && (
-          <TaxDiscountsWorkspace color={color} />
-        )}
+        {/* M25 — Products / Tables / Tax & Discounts branches removed
+            (those workspaces live on the Admin page now). SettingsPage
+            only owns the device / environment knobs: Database + Printer. */}
         {main === 'database' && (
           <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-            {/* Combined Database view: URL editor on top, operation tiles below.
-                flexDirection column lets each workspace keep its own internal
-                vertical scroll (overflowY:auto on the workspaces). */}
+            {/* Combined Database view: URL editor (top) + operation tiles
+                (bottom), no divider — the user wants them as one block.
+                flexDirection column lets each workspace keep its own
+                internal vertical scroll (overflowY:auto) so tall operation
+                tiles don't push the URL editor offscreen. */}
             <DatabaseWorkspace color={color} />
-            <Divider sx={{ borderColor: 'border.soft' }} />
             <DbOpsWorkspace color={color} />
-       </Box>
+          </Box>
         )}
         {main === 'printer' && (
           <PrinterWorkspace color={MAIN_COLOR.printer} />
@@ -310,13 +310,30 @@ export default function SettingsPage() {
 // PRODUCTS NESTED WORKSPACE — 4 columns deep
 // Products > Categories > Menu Items > Item Settings
 // ─────────────────────────────────────────────────────────────────────
+// M25 — Products / Tables / Tax & Discounts workspaces moved to AdminPage.
+// The bodies below are kept as dead code for now (delete in a future
+// commit once we're confident the AdminPage copies cover every case).
+//   ProductsNestedWorkspace  → AdminPage.ProductsWorkspace (3-col variant)
+//   TablesWorkspace          → AdminPage.TablesWorkspace   (identical)
+//   TaxDiscountsWorkspace    → AdminPage.TaxDiscountsWorkspace (verbatim)
 function ProductsNestedWorkspace({ color }: { color: string }) {
   const [categories, setCategories] = useState<AdminCategory[]>([]);
   const [products, setProducts] = useState<AdminProduct[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [selectedProductId, setSelectedProductId] = useState<number | null>(null);
+  // M24 — category edit state. `creatingCategory` opens a blank dialog;
+  // `editingCategory` opens a dialog pre-filled with that category. Both
+  // route through the same `CategoryDialog` component below.
   const [creatingCategory, setCreatingCategory] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<AdminCategory | null>(null);
+  // M24 — product edit state. Edit happens inline via `selectedProductId`
+  // (which renders the full ProductSettingsForm in column 4 with name,
+  // price, active, and station-routing override fields). The row's
+  // Edit button just selects the product so the form opens.
   const [creatingProduct, setCreatingProduct] = useState(false);
+  // Toast for create / edit / delete success or backend error messages.
+  const [catToast, setCatToast] = useState<{ msg: string; severity: 'success' | 'error' } | null>(null);
+  const [prodToast, setProdToast] = useState<{ msg: string; severity: 'success' | 'error' } | null>(null);
 
   // Load categories on mount
   useEffect(() => {
@@ -350,18 +367,99 @@ function ProductsNestedWorkspace({ color }: { color: string }) {
     }
   };
 
-  const saveCategory = async (payload: { name: string; color: string; icon?: string; sort?: number }) => {
-    const created = await Admin.createCategory(payload);
-    reloadCategories();
-    setSelectedCategoryId((created as AdminCategory).id);
-    setCreatingCategory(false);
+  const saveCategory = async (payload: {
+    name: string; color: string; icon?: string; sort?: number; kind?: string;
+  }) => {
+    try {
+      if (editingCategory) {
+        // PATCH — partial update, only send changed fields.
+        const updated = await Admin.updateCategory(editingCategory.id, payload);
+        reloadCategories();
+        setCatToast({ msg: `Updated category "${updated.name}"`, severity: 'success' });
+        setEditingCategory(null);
+      } else {
+        const created = await Admin.createCategory(payload) as AdminCategory;
+        reloadCategories();
+        setSelectedCategoryId(created.id);
+        setCreatingCategory(false);
+        setCatToast({ msg: `Created category "${created.name}"`, severity: 'success' });
+      }
+    } catch (e: any) {
+      setCatToast({
+        msg: e?.response?.data?.detail ?? 'Failed to save category',
+        severity: 'error',
+      });
+    }
   };
 
-  const saveProduct = async (payload: { name: string; price: number; category_id: number; active?: boolean }) => {
-    const created = await Admin.createProduct(payload);
-    reloadProducts();
-    setSelectedProductId((created as AdminProduct).id);
-    setCreatingProduct(false);
+  const removeCategory = async (id: number) => {
+    const target = categories.find((c) => c.id === id);
+    if (!target) return;
+    if (!window.confirm(
+      `Delete category "${target.name}"? Any products still in this category must be moved first.`,
+    )) return;
+    try {
+      await Admin.deleteCategory(id);
+      // If the deleted category was selected, clear selection so the
+      // product column resets too.
+      if (selectedCategoryId === id) {
+        setSelectedCategoryId(null);
+        setProducts([]);
+      }
+      reloadCategories();
+      setCatToast({ msg: `Deleted category "${target.name}"`, severity: 'success' });
+    } catch (e: any) {
+      setCatToast({
+        msg: e?.response?.data?.detail ?? 'Failed to delete category',
+        severity: 'error',
+      });
+    }
+  };
+
+  const saveProduct = async (payload: {
+    name: string; price: number; category_id: number; active?: boolean;
+    kind?: string;
+  }) => {
+    try {
+      // Backend allows description/image to default to "" so we always
+      // send them explicitly (the API signature requires them).
+      const created = await Admin.createProduct({
+        ...payload,
+        description: '',
+        image: '',
+        active: payload.active ?? true,
+      }) as AdminProduct;
+      reloadProducts();
+      setSelectedProductId(created.id);
+      setCreatingProduct(false);
+      setProdToast({ msg: `Created product "${created.name}"`, severity: 'success' });
+    } catch (e: any) {
+      setProdToast({
+        msg: e?.response?.data?.detail ?? 'Failed to save product',
+        severity: 'error',
+      });
+    }
+  };
+
+  const removeProduct = async (id: number) => {
+    const target = products.find((p) => p.id === id);
+    if (!target) return;
+    if (!window.confirm(
+      `Delete product "${target.name}"? This is permanent — historical order items keep their snapshotted name so they still render on past bills.`,
+    )) return;
+    try {
+      await Admin.deleteProduct(id);
+      if (selectedProductId === id) {
+        setSelectedProductId(null);
+      }
+      reloadProducts();
+      setProdToast({ msg: `Deleted product "${target.name}"`, severity: 'success' });
+    } catch (e: any) {
+      setProdToast({
+        msg: e?.response?.data?.detail ?? 'Failed to delete product',
+        severity: 'error',
+      });
+    }
   };
 
   return (
@@ -410,8 +508,40 @@ function ProductsNestedWorkspace({ color }: { color: string }) {
               active={selectedCategoryId === c.id}
               color={c.color}
               label={c.name}
-              sublabel={c.kind ?? 'kitchen'}
+              sublabel={`${c.kind ?? 'kitchen'} · ${c.color}`}
               onClick={() => setSelectedCategoryId(c.id)}
+              trailing={
+                <>
+                  <Tooltip title="Edit category">
+                    <IconButton
+                      size="small"
+                      onClick={() => setEditingCategory(c)}
+                      sx={{
+                        bgcolor: 'rgba(43, 108, 255, 0.12)',
+                        color: '#2b6cff',
+                        borderRadius: `${SHAPE.iconBtn}px`,
+                        '&:hover': { bgcolor: 'rgba(43, 108, 255, 0.22)' },
+                      }}
+                    >
+                      <EditIcon sx={{ fontSize: 16 }} />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Delete category">
+                    <IconButton
+                      size="small"
+                      onClick={() => removeCategory(c.id)}
+                      sx={{
+                        bgcolor: 'rgba(216, 69, 60, 0.12)',
+                        color: '#d8453c',
+                        borderRadius: `${SHAPE.iconBtn}px`,
+                        '&:hover': { bgcolor: 'rgba(216, 69, 60, 0.22)' },
+                      }}
+                    >
+                      <DeleteIcon sx={{ fontSize: 16 }} />
+                    </IconButton>
+                  </Tooltip>
+                </>
+              }
             />
           ))}
         </Box>
@@ -460,16 +590,52 @@ function ProductsNestedWorkspace({ color }: { color: string }) {
             <ColumnEmpty message="Select a category" />
           ) : products.length === 0 ? (
             <ColumnEmpty message="No products" />
-          ) : products.map((p) => (
-            <ListItemButton
-              key={p.id}
-              active={selectedProductId === p.id}
-              color={selectedCategory?.color ?? '#2b6cff'}
-              label={p.name}
-              sublabel={`$${p.price.toFixed(2)}`}
-              onClick={() => setSelectedProductId(p.id)}
-            />
-          ))}
+          ) : products.map((p) => {
+            // Effective station (product.kind overrides category.kind)
+            const effectiveKind = p.kind || selectedCategory?.kind || 'kitchen';
+            return (
+              <ListItemButton
+                key={p.id}
+                active={selectedProductId === p.id}
+                color={selectedCategory?.color ?? '#2b6cff'}
+                label={p.name}
+                sublabel={`$${p.price.toFixed(2)} · ${effectiveKind}${!p.active ? ' · off' : ''}`}
+                onClick={() => setSelectedProductId(p.id)}
+                trailing={
+                  <>
+                    <Tooltip title="Edit product (opens full settings in column 4)">
+                      <IconButton
+                        size="small"
+                        onClick={() => setSelectedProductId(p.id)}
+                        sx={{
+                          bgcolor: 'rgba(43, 108, 255, 0.12)',
+                          color: '#2b6cff',
+                          borderRadius: `${SHAPE.iconBtn}px`,
+                          '&:hover': { bgcolor: 'rgba(43, 108, 255, 0.22)' },
+                        }}
+                      >
+                        <EditIcon sx={{ fontSize: 16 }} />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Delete product">
+                      <IconButton
+                        size="small"
+                        onClick={() => removeProduct(p.id)}
+                        sx={{
+                          bgcolor: 'rgba(216, 69, 60, 0.12)',
+                          color: '#d8453c',
+                          borderRadius: `${SHAPE.iconBtn}px`,
+                          '&:hover': { bgcolor: 'rgba(216, 69, 60, 0.22)' },
+                        }}
+                      >
+                        <DeleteIcon sx={{ fontSize: 16 }} />
+                      </IconButton>
+                    </Tooltip>
+                  </>
+                }
+              />
+            );
+          })}
         </Box>
       </Paper>
 
@@ -491,6 +657,7 @@ function ProductsNestedWorkspace({ color }: { color: string }) {
             product={selectedProduct}
             category={selectedCategory}
             onSave={() => reloadProducts()}
+            onDelete={(id) => removeProduct(id)}
             color={color}
           />
         ) : (
@@ -498,11 +665,13 @@ function ProductsNestedWorkspace({ color }: { color: string }) {
         )}
       </Paper>
 
-      {/* New Category Dialog */}
-      {creatingCategory && (
-        <CategoryCreateDialog
+      {/* New / Edit Category Dialog — M24 unified for both create and edit */}
+      {(creatingCategory || editingCategory) && (
+        <CategoryDialog
+          open
+          initial={editingCategory ?? undefined}
+          onClose={() => { setCreatingCategory(false); setEditingCategory(null); }}
           onSave={saveCategory}
-          onClose={() => setCreatingCategory(false)}
         />
       )}
 
@@ -514,56 +683,200 @@ function ProductsNestedWorkspace({ color }: { color: string }) {
           onClose={() => setCreatingProduct(false)}
         />
       )}
+
+      {/* Toast: category create / edit / delete feedback */}
+      <Snackbar
+        open={!!catToast}
+        autoHideDuration={4000}
+        onClose={() => setCatToast(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          severity={catToast?.severity ?? 'success'}
+          variant="filled"
+          onClose={() => setCatToast(null)}
+          sx={{ borderRadius: `${SHAPE.button}px` }}
+        >
+          {catToast?.msg ?? ''}
+        </Alert>
+      </Snackbar>
+
+      {/* Toast: product create / edit / delete feedback */}
+      <Snackbar
+        open={!!prodToast}
+        autoHideDuration={4000}
+        onClose={() => setProdToast(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          severity={prodToast?.severity ?? 'success'}
+          variant="filled"
+          onClose={() => setProdToast(null)}
+          sx={{ borderRadius: `${SHAPE.button}px` }}
+        >
+          {prodToast?.msg ?? ''}
+        </Alert>
+      </Snackbar>
     </>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Category Create Dialog
+// Category Create / Edit Dialog — M24
 // ─────────────────────────────────────────────────────────────────────
-function CategoryCreateDialog({
-  onSave,
-  onClose,
+function CategoryDialog({
+  open, initial, onClose, onSave,
 }: {
-  onSave: (p: { name: string; color: string; icon?: string; sort?: number }) => void;
+  open: boolean;
+  initial?: AdminCategory;
   onClose: () => void;
+  onSave: (p: { name: string; color: string; icon?: string; sort?: number; kind?: string }) => void | Promise<void>;
 }) {
   const [name, setName] = useState('');
   const [color, setColor] = useState('#0c8a7a');
+  const [icon, setIcon] = useState('restaurant');
+  const [sort, setSort] = useState(0);
+  const [kind, setKind] = useState<'kitchen' | 'bar' | 'both'>('kitchen');
+
+  useEffect(() => {
+    if (open) {
+      setName(initial?.name ?? '');
+      setColor(initial?.color ?? '#0c8a7a');
+      setIcon(initial?.icon ?? 'restaurant');
+      setSort(initial?.sort ?? 0);
+      setKind((initial?.kind as 'kitchen' | 'bar' | 'both') ?? 'kitchen');
+    }
+  }, [open, initial]);
+
+  const validHex = /^#[0-9a-fA-F]{6}$/.test(color);
+  const canSave = !!name.trim() && validHex;
 
   return (
-    <Dialog open onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle sx={{ fontWeight: 700 }}>New Category</DialogTitle>
-      <DialogContent>
-        <Stack spacing={2} sx={{ mt: 1 }}>
+    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth
+      PaperProps={{ sx: { borderRadius: `${SHAPE.dialog}px`, borderTop: '4px solid', borderTopColor: MAIN_COLOR.products } }}
+    >
+      <DialogTitle sx={{ fontWeight: 700 }}>
+        {initial ? 'Edit Category' : 'New Category'}
+      </DialogTitle>
+      <DialogContent dividers>
+        <Stack spacing={2} sx={{ pt: 0.5 }}>
           <TextField
             label="Name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            fullWidth
-            size="small"
-            autoFocus
+            fullWidth size="small" autoFocus
           />
           <TextField
-            label="Color"
-            value={color}
-            onChange={(e) => setColor(e.target.value)}
-            fullWidth
-            size="small"
+            label="Sort order"
+            type="number"
+            value={sort}
+            onChange={(e) => setSort(parseInt(e.target.value) || 0)}
+            fullWidth size="small"
           />
+
+          {/* Print routing (kitchen / bar / both) — drives which station
+              sees the order. Admin can flip this at any time; the new
+              value applies to NEW orders only (existing OrderItem.station
+              snapshots are preserved). */}
+          <Box>
+            <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', letterSpacing: 0.5 }}>
+              PRINT ROUTING
+            </Typography>
+            <Stack direction="row" spacing={0.75} sx={{ mt: 0.75 }}>
+              {(['kitchen', 'bar', 'both'] as const).map((k) => {
+                const selected = kind === k;
+                const colorMap = {
+                  kitchen: '#d99317',  // amber — matches Kitchen role color
+                  bar: '#0e9ec7',      // cyan — matches Bar role color
+                  both: '#6b46d3',     // violet — both stations
+                };
+                return (
+                  <Box
+                    key={k}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setKind(k)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setKind(k); }}
+                    sx={{
+                      flex: 1,
+                      py: 1.25,
+                      borderRadius: `${SHAPE.button}px`,
+                      border: '2px solid',
+                      borderColor: selected ? colorMap[k] : 'border.default',
+                      bgcolor: selected ? colorMap[k] : 'transparent',
+                      color: selected ? '#fff' : colorMap[k],
+                      textAlign: 'center',
+                      cursor: 'pointer',
+                      fontWeight: 700,
+                      fontSize: '0.85rem',
+                      textTransform: 'uppercase',
+                      letterSpacing: 0.5,
+                      transition: 'background-color 0.1s, border-color 0.1s, color 0.1s',
+                      '&:hover': { borderColor: colorMap[k], bgcolor: selected ? colorMap[k] : `${colorMap[k]}14` },
+                      '&:focus-visible': { outline: `2px solid ${colorMap[k]}`, outlineOffset: 2 },
+                    }}
+                  >
+                    {k}
+                  </Box>
+                );
+              })}
+            </Stack>
+          </Box>
+
+          {/* Color picker — native HTML5 + hex text + 10-swatch quick palette */}
+          <Box>
+            <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', letterSpacing: 0.5 }}>
+              COLOR
+            </Typography>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.75 }}>
+              <input
+                type="color"
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+                style={{ width: 48, height: 48, border: 'none', borderRadius: 6, cursor: 'pointer', background: 'transparent' }}
+              />
+              <TextField
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+                size="small"
+                sx={{ flex: 1 }}
+                placeholder="#rrggbb"
+                error={!validHex}
+                helperText={!validHex ? 'Must be #rrggbb' : undefined}
+              />
+              <Box sx={{ width: 48, height: 48, borderRadius: `${SHAPE.button}px`, bgcolor: color, border: '1px solid', borderColor: 'border.default' }} />
+            </Stack>
+            <Stack direction="row" spacing={0.5} sx={{ mt: 1 }} flexWrap="wrap" useFlexGap>
+              {['#ef4444', '#f97316', '#eab308', '#22c55e', '#14b8a6', '#0ea5e9', '#6366f1', '#a855f7', '#ec4899', '#64748b'].map((sw) => (
+                <Box
+                  key={sw}
+                  onClick={() => setColor(sw)}
+                  sx={{
+                    width: 28, height: 28, borderRadius: `${SHAPE.chip}px`, bgcolor: sw, cursor: 'pointer',
+                    border: '2px solid', borderColor: color.toLowerCase() === sw ? 'text.primary' : 'transparent',
+                  }}
+                />
+              ))}
+            </Stack>
+          </Box>
         </Stack>
       </DialogContent>
-      <Box sx={{ p: 2, display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
-        <Button onClick={onClose}>Cancel</Button>
+      <DialogActions sx={{ p: 2 }}>
+        <Button onClick={onClose} color="warning">Cancel</Button>
         <Button
+          onClick={() => canSave && onSave({ name: name.trim(), color, icon, sort, kind })}
           variant="contained"
-          onClick={() => onSave({ name, color })}
-          disabled={!name.trim()}
-          sx={{ bgcolor: '#0c8a7a', '&:hover': { bgcolor: '#0c8a7a' } }}
+          disabled={!canSave}
+          sx={{
+            bgcolor: MAIN_COLOR.products,
+            '&:hover': { bgcolor: MAIN_COLOR.products, filter: 'brightness(0.9)' },
+            borderRadius: `${SHAPE.button}px`,
+            fontWeight: 700,
+          }}
         >
-          Create
+          {initial ? 'Save' : 'Create'}
         </Button>
-      </Box>
+      </DialogActions>
     </Dialog>
   );
 }
@@ -631,11 +944,13 @@ function ProductSettingsForm({
   product,
   category,
   onSave,
+  onDelete,
   color,
 }: {
   product: AdminProduct;
   category: AdminCategory | null;
   onSave: () => void;
+  onDelete?: (id: number) => void;
   color: string;
 }) {
   const [name, setName] = useState(product.name);
@@ -760,7 +1075,25 @@ function ProductSettingsForm({
           )}
         </Box>
 
-        <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end', mt: 2 }}>
+        <Box sx={{ display: 'flex', gap: 1, justifyContent: 'space-between', mt: 2, alignItems: 'center' }}>
+          {onDelete ? (
+            <Button
+              variant="outlined"
+              color="error"
+              onClick={() => onDelete(product.id)}
+              startIcon={<DeleteIcon />}
+              sx={{
+                borderRadius: `${SHAPE.button}px`,
+                minHeight: 40,
+                fontWeight: 700,
+                borderColor: '#d8453c',
+                color: '#d8453c',
+                '&:hover': { bgcolor: 'rgba(216, 69, 60, 0.08)', borderColor: '#d8453c' },
+              }}
+            >
+              Delete
+            </Button>
+          ) : <Box />}
           <Button
             variant="contained"
             onClick={handleSave}
@@ -1607,7 +1940,7 @@ function DatabaseWorkspace({ color }: { color: string }) {
   }
 
   return (
-    <Box sx={{ flex: 1, overflowY: 'auto', p: 3 }}>
+    <Box sx={{ flex: 1, overflowY: 'auto', p: 3, pb: 0 }}>
       <ColumnHeader title="DATABASE" color={color} />
 
       {error && (
@@ -1774,7 +2107,7 @@ function DbOpsWorkspace({ color }: { color: string }) {
   }
 
   return (
-    <Box sx={{ flex: 1, overflowY: 'auto', p: 3 }}>
+    <Box sx={{ flex: 1, overflowY: 'auto', p: 3, pt: 0 }}>
       <ColumnHeader title="DATABASE OPERATIONS" color={color} />
 
       {error && (

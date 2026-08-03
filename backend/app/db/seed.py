@@ -21,6 +21,12 @@ SEED_CATEGORIES = [
     ("Sandwiches", "lunch_dining", "#5B8DEF", 3, "kitchen"),
     ("Cold Drinks", "local_bar", "#9C27B0", 4, "bar"),
     ("Desserts", "icecream", "#E91E63", 5, "kitchen"),
+    # M23 — Combo category shows up on BOTH kitchen and bar displays so
+    # a single order can have items only the kitchen sees (food), items
+    # only the bar sees (drinks), and items both stations must work on
+    # together (a combo plate). Real cafés use this for "burger + drink"
+    # combos where both prep lines need to coordinate.
+    ("Combos", "restaurant_menu", "#FF9800", 6, "both"),
 ]
 
 
@@ -52,6 +58,11 @@ SEED_PRODUCTS = [
     ("Desserts", "Cheesecake", 5.75, "New York style", []),
     ("Desserts", "Tiramisu", 5.95, "Classic Italian", []),
     ("Desserts", "Cookie", 2.25, "Chocolate chip", []),
+    # M23 — combo item routed to BOTH stations (kitchen makes the food,
+    # bar pours the drink). The same logical line shows up on both
+    # displays so the kitchen and bar prep in parallel.
+    ("Combos", "Burger + Coffee Combo", 11.50, "Beef burger + single espresso", []),
+    ("Combos", "Sandwich + Latte Combo", 10.75, "Ham & cheese + latte", []),
 ]
 
 

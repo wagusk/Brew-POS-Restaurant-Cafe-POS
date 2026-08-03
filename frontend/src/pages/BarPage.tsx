@@ -187,12 +187,18 @@ export default function BarPage() {
          </Paper>
         )}
         {orders.map((o) => {
-          // The bar sees only items on its station. If the order also has
-          // kitchen items (e.g. a burger), we hide those lines so the
-          // bartender only makes drinks — but we keep the order card so
-          // the order as a whole is visible.
-          const barItems = o.items.filter((i: any) => (i.station ?? 'kitchen') === 'bar');
-          const kitchenHidden = o.items.length - barItems.length;
+          // The bar sees only items on its station. "both" items appear
+          // here too so coffee+dessert combos light up both displays.
+          // Bar-only lines are filtered out so the bartender only makes
+          // drinks (kitchen handles the food). The order card itself is
+          // kept visible so the bill as a whole stays grouped.
+          const barItems = o.items.filter(
+            (i: any) => {
+              const s = i.station ?? 'kitchen';
+              return s === 'bar' || s === 'both';
+            },
+          );
+          const kitchenHidden = o.items.length - barItems.filter((i: any) => (i.station ?? 'kitchen') !== 'bar').length;
           const statusColor =
             o.status === 'ready' ? 'success.main' :
             o.status === 'preparing' ? 'warning.main' :

@@ -46,6 +46,14 @@ export default function CashierPage() {
   const [paying, setPaying] = useState<Order | null>(null);
   const [snack, setSnack] = useState<{ msg: string; severity: 'success' | 'error' | 'info' } | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // M25 — sticky Pay-bar reprint state. Separated from BillPanel's
+  // internal reprint state so the sticky "Print" button and the header
+  // IconButton can both run independently without disabling each other.
+  const [reprintingBill, setReprintingBill] = useState(false);
+  // M22 — Change Due popup. Opens after a successful cash close when
+  // tendered > total, so the cashier can hand the change to the customer
+  // and tap OK to acknowledge. Single OK button.
+  const [changeDue, setChangeDue] = useState<{ amount: number; total: number; tendered: number } | null>(null);
 
   const reload = () => {
     Orders.list().then(setBills).catch(() => {});
@@ -323,34 +331,95 @@ export default function CashierPage() {
               <BillPanel bill={selectedBill} tableName={tables.find((t: Table) => t.id === selectedBill.table_id)?.name} onReprint={(msg, severity) => setSnack({ msg, severity })} />
             )}
           </Box>
-          {/* Pay button — sticky below the bill panel so the cashier can
-              close the current bill in one tap. Same blue as the cashier
-              accent, full width of the 30% column. */}
+          {/* M25 — sticky Pay / Print bar. Two-button row at the bottom of
+              the cashier's bill column:
+                • Left  — "Print" (re-print customer receipt), visible
+                  only when the bill is PAID. Same backend endpoint
+                  (POST /api/orders/{id}/print-receipt). Surfaces a
+                  snack with the byte count so the cashier can see the
+                  hardware loop (bytes_written = how many ESC/POS bytes
+                  actually hit the printer).
+                • Right — "Pay Bill" (open the payment popup) or "Paid"
+                  for already-paid bills.
+              Both touch-sized (minHeight 56) so the cashier can hit
+              either without looking. */}
           {selectedBill && (
             <Box sx={{ p: 2, borderTop: '1px solid', borderColor: 'border.default', bgcolor: 'surface.paper' }}>
-              <Button
-                fullWidth
-                variant="contained"
-                size="large"
-                startIcon={<CheckCircleIcon />}
-                onClick={() => setPaying(selectedBill)}
-                disabled={selectedBill.status === 'paid' || selectedBill.status === 'cancelled'}
-                sx={{
-                  bgcolor: 'role.cashier',
-                  borderRadius: `${SHAPE.button}px`,
-                  minHeight: 56,
-                  fontWeight: 800,
-                  fontSize: '1.05rem',
-                  boxShadow: 'none',
-                  '&:hover': { bgcolor: 'role.cashier', filter: 'brightness(0.92)' },
-                }}
-              >
-                {selectedBill.status === 'paid'
-                  ? 'Paid'
-                  : `Pay Bill $${selectedBill.total.toFixed(2)}`}
-              </Button>
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                {/* Print receipt — only on paid bills (backend guard).
+                    Hidden entirely when the bill isn't paid so the Pay
+                    button gets full width of the row. */}
+                {selectedBill.status === 'paid' && (
+                  <Button
+                    variant="contained"
+                    size="large"
+                    startIcon={reprintingBill
+                      ? <CircularProgress size={16} sx={{ color: 'common.white' }} />
+                      : <PrintOutlinedIcon />}
+                    onClick={async () => {
+                      setReprintingBill(true);
+                      try {
+                        const res = await Orders.printReceipt(selectedBill.id);
+                        setSnack({
+                          msg: res.ok
+                            ? `Receipt reprinted · ${res.bytes_written} bytes · ${res.elapsed_ms ?? 0}ms`
+                            : `Receipt failed · ${res.error ?? 'unknown error'}`,
+                          severity: res.ok ? 'success' : 'error',
+                        });
+                      } catch (e: any) {
+                        const detail = e?.response?.data?.detail ?? e?.message ?? 'Reprint request failed';
+                        setSnack({
+                          msg: typeof detail === 'string' ? detail : JSON.stringify(detail),
+                          severity: 'error',
+                        });
+                      } finally {
+                        setReprintingBill(false);
+                      }
+                    }}
+                    disabled={reprintingBill}
+                    sx={{
+                      flex: 1,
+                      bgcolor: '#2b6cff',
+                      borderRadius: `${SHAPE.button}px`,
+                      minHeight: 56,
+                      fontWeight: 800,
+                      fontSize: '1.0rem',
+                      boxShadow: 'none',
+                      '&:hover': { bgcolor: '#2b6cff', filter: 'brightness(0.92)' },
+                    }}
+                  >
+                    {reprintingBill ? 'Printing…' : 'Print'}
+                  </Button>
+                )}
+                <Button
+                  fullWidth
+                  variant="contained"
+                  size="large"
+                  startIcon={<CheckCircleIcon />}
+                  onClick={() => setPaying(selectedBill)}
+                  disabled={selectedBill.status === 'paid' || selectedBill.status === 'cancelled'}
+                  sx={{
+                    flex: selectedBill.status === 'paid' ? 1 : 1,
+                    bgcolor: 'role.cashier',
+                    borderRadius: `${SHAPE.button}px`,
+                    minHeight: 56,
+                    fontWeight: 800,
+                    fontSize: '1.05rem',
+                    boxShadow: 'none',
+                    '&:hover': { bgcolor: 'role.cashier', filter: 'brightness(0.92)' },
+                  }}
+                >
+                  {selectedBill.status === 'paid'
+                    ? 'Paid'
+                    : selectedBill.status === 'cancelled'
+                      ? 'Cancelled'
+                      : `Pay Bill $${selectedBill.total.toFixed(2)}`}
+                </Button>
+              </Box>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mt: 0.75, fontWeight: 600 }}>
-                Method, tendered & change appear in the popup.
+                {selectedBill.status === 'paid'
+                  ? 'Print fires the customer receipt on the configured printer.'
+                  : 'Method, tendered & change appear in the payment popup.'}
               </Typography>
             </Box>
           )}
@@ -383,6 +452,16 @@ export default function CashierPage() {
           }
           try {
             await Orders.close(paying.id, payload);
+            // M22 — Show Change Due popup for cash payments where the
+            // customer handed over more than the total. Card/mobile
+            // payments are always exact, so they skip this popup.
+            if (method === 'cash' && tendered > paying.total + 0.005) {
+              setChangeDue({
+                amount: +(tendered - paying.total).toFixed(2),
+                total: paying.total,
+                tendered,
+              });
+            }
             setPaying(null);
             reload();
           } catch (e: any) {
@@ -400,21 +479,85 @@ export default function CashierPage() {
       />
 
       <Snackbar
-        open={!!snack}
-        autoHideDuration={5000}
-        onClose={() => setSnack(null)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert
-          severity={snack?.severity ?? 'error'}
-          variant="filled"
-          onClose={() => setSnack(null)}
-          sx={{ borderRadius: `${SHAPE.button}px` }}
-        >
-          {snack?.msg ?? ''}
+         open={!!snack}
+         autoHideDuration={5000}
+         onClose={() => setSnack(null)}
+         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+       >
+         <Alert
+           severity={snack?.severity ?? 'error'}
+           variant="filled"
+           onClose={() => setSnack(null)}
+           sx={{ borderRadius: `${SHAPE.button}px` }}
+         >
+           {snack?.msg ?? ''}
        </Alert>
-     </Snackbar>
-    </Box>
+      </Snackbar>
+
+       {/* ─── M22 — Change Due popup ───
+           Shown after a successful cash close when tendered > total.
+           Big green change amount, single OK button to acknowledge
+           (cashier hands the change, then taps OK to dismiss). */}
+       <Dialog
+         open={!!changeDue}
+         onClose={() => { /* OK button only — no backdrop dismiss */ }}
+         maxWidth="xs"
+         fullWidth
+         PaperProps={{
+           sx: {
+             borderRadius: `${SHAPE.dialog}px`,
+             borderTop: '6px solid',
+             borderTopColor: 'success.main',
+           },
+         }}
+       >
+         <DialogTitle sx={{ textAlign: 'center', pt: 2.5, pb: 0.5 }}>
+           <Typography
+             variant="overline"
+             sx={{
+               display: 'block',
+               color: 'success.main',
+               fontWeight: 800,
+               letterSpacing: 2,
+             }}
+           >
+             Change Due
+          </Typography>
+           <Typography sx={{ fontSize: '0.85rem', color: 'text.secondary', fontWeight: 600, mt: 0.5 }}>
+             Hand this to the customer
+          </Typography>
+        </DialogTitle>
+         <DialogContent dividers sx={{ borderColor: 'success.main' }}>
+           <Box sx={{ textAlign: 'center', py: 2 }}>
+             <Typography sx={{ fontFamily: 'monospace', fontWeight: 800, fontSize: '5rem', lineHeight: 1, color: 'success.main', letterSpacing: -2 }}>
+               ${changeDue?.amount.toFixed(2) ?? '0.00'}
+            </Typography>
+             {changeDue && (
+               <Typography variant="body2" color="text.secondary" sx={{ mt: 2, fontWeight: 600 }}>
+                 Tendered ${changeDue.tendered.toFixed(2)} · Total ${changeDue.total.toFixed(2)}
+              </Typography>
+             )}
+          </Box>
+        </DialogContent>
+         <DialogActions sx={{ p: 2 }}>
+           <Button
+             onClick={() => setChangeDue(null)}
+             variant="contained"
+             color="success"
+             size="large"
+             fullWidth
+             sx={{
+               borderRadius: `${SHAPE.button}px`,
+               minHeight: 72,
+               fontWeight: 800,
+               fontSize: '1.2rem',
+             }}
+           >
+             OK
+          </Button>
+        </DialogActions>
+      </Dialog>
+      </Box>
   );
 }
 
@@ -577,6 +720,15 @@ function PaymentDialog({
   // resolves percent presets against the persisted subtotal.
   const [policy, setPolicy] = useState<DiscountPolicy | null>(null);
   const [appliedPreset, setAppliedPreset] = useState<{ label: string; amount: number } | null>(null);
+  // M22 — short-payment confirm popup. Opens when cashier taps the
+  // "Short" display (tendered < total). The Confirm button in the
+  // dialog stays disabled while short, so the cashier MUST tap Short
+  // → OK before Pay becomes available. Tracks the short amount at the
+  // moment the popup opened so a numpad edit between pop and OK
+  // doesn't drift.
+  const [shortOpen, setShortOpen] = useState(false);
+  const [shortSnapshot, setShortSnapshot] = useState<{ tendered: number; total: number } | null>(null);
+  const [shortAcknowledged, setShortAcknowledged] = useState(false);
 
   useEffect(() => {
     if (open && bill) {
@@ -584,6 +736,9 @@ function PaymentDialog({
       setMethod('cash');
       setError(null);
       setAppliedPreset(null);
+      setShortOpen(false);
+      setShortSnapshot(null);
+      setShortAcknowledged(false);
       Discount.get().then(setPolicy).catch(() => setPolicy(null));
     }
   }, [open, bill?.id]);
@@ -615,7 +770,22 @@ function PaymentDialog({
   const tenderedNum = parseFloat(tendered) || 0;
   const isCash = method === 'cash';
   const change = isCash ? tenderedNum - recomputedTotal : 0;
+  const isShort = isCash && tenderedNum < recomputedTotal - 0.005;
+  // M22 — Confirm Pay is gated on: not short, OR the cashier has tapped
+  // Short → OK in the confirm popup. `canPay` carries the standard
+  // "enough tendered" check; `payEnabled` adds the acknowledgment gate.
   const canPay = !isCash || tenderedNum >= recomputedTotal - 0.005;
+  const payEnabled = canPay && (!isShort || shortAcknowledged);
+
+  const openShortConfirm = () => {
+    if (!isShort) return;
+    setShortSnapshot({ tendered: tenderedNum, total: recomputedTotal });
+    setShortOpen(true);
+  };
+  const acceptShort = () => {
+    setShortOpen(false);
+    setShortAcknowledged(true);
+  };
 
   const tap = (key: string) => {
     setTendered((cur) => {
@@ -663,6 +833,7 @@ function PaymentDialog({
   };
 
   return (
+    <>
     <Dialog
       open={open}
       onClose={onCancel}
@@ -676,120 +847,339 @@ function PaymentDialog({
         },
       }}
     >
-      <DialogTitle sx={{ fontWeight: 800 }}>
-        Pay Bill #{bill.number}
-        <Typography variant="caption" color="text.secondary" component="div" sx={{ mt: 0.25 }}>
-          ${recomputedTotal.toFixed(2)} due{bill.items.length ? ` · ${bill.items.length} item${bill.items.length === 1 ? '' : 's'}` : ''}
-        </Typography>
-      </DialogTitle>
-      <DialogContent dividers>
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
-          <Box>
-            {/* ───── M21.1 — Discount preset row ─────
-                Sits above the Method label so the cashier sees
-                discount options before they pick a tendering method.
-                Each tile shows: label + mode badge + the live dollar
-                amount this preset would shave off *this* bill (server
-                resolves percent presets against subtotal). Re-tap
-                clears the selection. */}
-            {presets.length > 0 && (
-              <>
-                <Typography variant="overline" sx={{ fontWeight: 700, color: 'text.secondary', display: 'block', mb: 1, letterSpacing: 0.5 }}>
-                  Discount
+      {/* ─── Header: centered title with BIG Payment Due amount ─── */}
+      <DialogTitle
+        sx={{
+          textAlign: 'center',
+          pb: 1.5,
+          pt: 2,
+          bgcolor: 'surface.muted',
+          borderBottom: '1px solid',
+          borderColor: 'border.default',
+        }}
+      >
+        <Typography
+          variant="overline"
+          sx={{ display: 'block', color: 'text.secondary', letterSpacing: 1.5, fontWeight: 700 }}
+        >
+          Pay Bill #{bill.number}
+          {bill.items.length ? ` · ${bill.items.length} item${bill.items.length === 1 ? '' : 's'}` : ''}
+       </Typography>
+        <Typography
+          sx={{
+            fontFamily: 'monospace',
+            fontWeight: 800,
+            fontSize: { xs: '2.8rem', sm: '3.6rem' },
+            lineHeight: 1.05,
+            color: 'role.cashier',
+            mt: 0.5,
+            letterSpacing: -1,
+          }}
+        >
+          ${recomputedTotal.toFixed(2)}
+       </Typography>
+        <Typography
+          variant="overline"
+          sx={{
+            display: 'block',
+            color: 'role.cashier',
+            fontWeight: 800,
+            letterSpacing: 2,
+            mt: 0.5,
+          }}
+        >
+          PAYMENT DUE
+       </Typography>
+     </DialogTitle>
+      <DialogContent dividers sx={{ p: 2 }}>
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: { xs: '1fr', md: '1fr 1.1fr 1fr' },
+            gap: 1.5,
+            alignItems: 'stretch',
+          }}
+        >
+          {/* ─── Column 1: Discount ─── */}
+          <Box sx={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+            <Typography variant="overline" sx={{ fontWeight: 700, color: 'text.secondary', display: 'block', mb: 1, letterSpacing: 0.5 }}>
+              Discount
+            </Typography>
+            {presets.length === 0 ? (
+              <Paper
+                sx={{
+                  flex: 1,
+                  p: 2,
+                  borderRadius: `${SHAPE.card}px`,
+                  border: '1px dashed',
+                  borderColor: 'border.default',
+                  bgcolor: 'surface.muted',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  textAlign: 'center',
+                }}
+              >
+                <Typography variant="body2" color="text.secondary">
+                  No presets configured.
                 </Typography>
-                <Box
-                  sx={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))',
-                    gap: 1,
-                    mb: 2,
-                  }}
-                >
-                  {presets.map((p, idx) => {
-                    const liveAmount = resolvePresetDiscount(p, subtotal);
-                    const isSel = appliedPreset?.label === p.label;
-                    const isPercent = (p.mode ?? 'amount') === 'percent';
-                    return (
-                      <Box
-                        key={`${p.label}-${idx}`}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => tapPreset(p)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tapPreset(p); }
-                        }}
-                        sx={{
-                          borderRadius: `${SHAPE.button}px`,
-                          border: '2px solid',
-                          borderColor: isSel ? '#e07b1a' : 'border.default',
-                          bgcolor: isSel ? 'rgba(224, 123, 26, 0.10)' : 'surface.paper',
-                          p: 1,
-                          cursor: 'pointer',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          gap: 0.25,
-                          minHeight: 64,
-                          transition: 'all 0.12s',
-                          '&:hover': { borderColor: '#e07b1a' },
-                          '&:active': { transform: 'scale(0.97)' },
-                        }}
-                      >
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                          <LocalOfferIcon sx={{ fontSize: 14, color: isSel ? '#e07b1a' : 'text.secondary' }} />
-                          <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', color: 'text.primary', textAlign: 'center', lineHeight: 1.1 }}>
-                            {p.label}
-                          </Typography>
-                        </Box>
-                        <Typography sx={{ fontWeight: 800, fontSize: '0.95rem', color: '#e07b1a' }}>
-                          −${liveAmount.toFixed(2)}
-                        </Typography>
-                        <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.65rem' }}>
-                          {isPercent ? `${Number(p.value ?? 0).toFixed(p.value === Math.floor(p.value) ? 0 : 1)}% off subtotal` : 'fixed off'}
+              </Paper>
+            ) : (
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
+                  gap: 1,
+                  alignContent: 'start',
+                }}
+              >
+                {presets.map((p, idx) => {
+                  const liveAmount = resolvePresetDiscount(p, subtotal);
+                  const isSel = appliedPreset?.label === p.label;
+                  const isPercent = (p.mode ?? 'amount') === 'percent';
+                  return (
+                    <Box
+                      key={`${p.label}-${idx}`}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => tapPreset(p)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tapPreset(p); }
+                      }}
+                      sx={{
+                        borderRadius: `${SHAPE.button}px`,
+                        border: '2px solid',
+                        borderColor: isSel ? '#e07b1a' : 'border.default',
+                        bgcolor: isSel ? 'rgba(224, 123, 26, 0.10)' : 'surface.paper',
+                        p: 1,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: 0.25,
+                        minHeight: 72,
+                        transition: 'all 0.12s',
+                        '&:hover': { borderColor: '#e07b1a' },
+                        '&:active': { transform: 'scale(0.97)' },
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <LocalOfferIcon sx={{ fontSize: 14, color: isSel ? '#e07b1a' : 'text.secondary' }} />
+                        <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', color: 'text.primary', textAlign: 'center', lineHeight: 1.1 }}>
+                          {p.label}
                         </Typography>
                       </Box>
+                      <Typography sx={{ fontWeight: 800, fontSize: '0.95rem', color: '#e07b1a' }}>
+                        −${liveAmount.toFixed(2)}
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.65rem' }}>
+                        {isPercent ? `${Number(p.value ?? 0).toFixed(p.value === Math.floor(p.value) ? 0 : 1)}% off subtotal` : 'fixed off'}
+                      </Typography>
+                    </Box>
+                  );
+                })}
+              </Box>
+            )}
+            {appliedPreset && (
+              <Paper
+                sx={{
+                  p: 1.25,
+                  mt: 1.5,
+                  borderRadius: `${SHAPE.button}px`,
+                  bgcolor: 'rgba(224, 123, 26, 0.08)',
+                  border: '1px solid #e07b1a',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1.5,
+                }}
+              >
+                <PercentIcon sx={{ color: '#e07b1a', fontSize: 18 }} />
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography sx={{ fontWeight: 700, fontSize: '0.85rem' }} noWrap>
+                    {appliedPreset.label} applied
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" noWrap>
+                    ${subtotal.toFixed(2)} − ${appliedPreset.amount.toFixed(2)} = ${recomputedTotal.toFixed(2)}
+                  </Typography>
+                </Box>
+                <Button size="small" color="warning" onClick={() => setAppliedPreset(null)} sx={{ minHeight: 32 }}>
+                  Clear
+                </Button>
+              </Paper>
+            )}
+          </Box>
+
+          {/* ─── Column 2: Tendered + Numpad ─── */}
+          <Box sx={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+            <Typography variant="overline" sx={{ fontWeight: 700, color: 'text.secondary', display: 'block', mb: 1, letterSpacing: 0.5 }}>
+              Tendered
+            </Typography>
+            {isCash ? (
+              <>
+                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5, mb: 1.5 }}>
+                  <DisplayCard
+                    label="Tendered"
+                    value={`$${tenderedNum.toFixed(2)}`}
+                    color="text.primary"
+                    bg="surface.muted"
+                    border="border.default"
+                  />
+                  {/* M22 — Short / Change. When tendered >= total this is
+                      a green Change display. When short, it becomes a
+                      red tappable button that opens the Short-confirm
+                      popup. Once the cashier taps Short → OK, the badge
+                      switches to a muted "Short acknowledged" state so
+                      Pay becomes enabled. */}
+                  {change >= 0 ? (
+                    <DisplayCard
+                      label="Change"
+                      value={`$${change.toFixed(2)}`}
+                      color="#1f9d55"
+                      bg="#e8f6ee"
+                      border="#1f9d55"
+                      highlight={tenderedNum > 0}
+                    />
+                  ) : (
+                    <Box
+                      role="button"
+                      tabIndex={0}
+                      onClick={openShortConfirm}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openShortConfirm(); }
+                      }}
+                      sx={{
+                        border: '1px solid',
+                        borderColor: shortAcknowledged ? '#b0680e' : '#d8453c',
+                        borderRadius: `${SHAPE.card}px`,
+                        p: 1.5,
+                        bgcolor: shortAcknowledged ? 'rgba(176, 104, 14, 0.10)' : '#fbe9e8',
+                        textAlign: 'center',
+                        minHeight: 80,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        transition: 'transform 0.12s, box-shadow 0.12s',
+                        transform: shortAcknowledged ? 'none' : 'scale(1.02)',
+                        '&:hover': { boxShadow: '0 0 0 3px rgba(216, 69, 60, 0.25)' },
+                        '&:active': { transform: 'scale(0.97)' },
+                      }}
+                    >
+                      <Typography variant="overline" sx={{ display: 'block', lineHeight: 1.4, fontWeight: 700, letterSpacing: 0.5, color: shortAcknowledged ? '#b0680e' : '#d8453c' }}>
+                        {shortAcknowledged ? 'Short acknowledged' : 'Short (tap)'}
+                      </Typography>
+                      <Typography
+                        sx={{
+                          fontWeight: 700, fontFamily: 'monospace', fontSize: '1.4rem', lineHeight: 1.2, mt: 0.5,
+                          color: shortAcknowledged ? '#b0680e' : '#d8453c',
+                        }}
+                      >
+                        −${Math.abs(change).toFixed(2)}
+                      </Typography>
+                    </Box>
+                  )}
+                </Box>
+                <Box sx={{ display: 'flex', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
+                  <Button size="small" variant="outlined" onClick={exact} sx={{ borderRadius: `${SHAPE.button}px`, minHeight: 40, fontWeight: 600 }}>
+                    Exact ${recomputedTotal.toFixed(2)}
+                  </Button>
+                  <Button size="small" variant="outlined" onClick={() => addQuick(5)} sx={{ borderRadius: `${SHAPE.button}px`, minHeight: 40 }}>+$5</Button>
+                  <Button size="small" variant="outlined" onClick={() => addQuick(10)} sx={{ borderRadius: `${SHAPE.button}px`, minHeight: 40 }}>+$10</Button>
+                  <Button size="small" variant="outlined" onClick={() => addQuick(20)} sx={{ borderRadius: `${SHAPE.button}px`, minHeight: 40 }}>+$20</Button>
+                  <Button size="small" variant="outlined" color="warning" onClick={clearAll} sx={{ borderRadius: `${SHAPE.button}px`, minHeight: 40 }}>Clear</Button>
+                </Box>
+                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1, alignContent: 'start' }}>
+                  {['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'back'].map((k) => {
+                    if (k === 'back') {
+                      return (
+                        <Button
+                          key={k}
+                          variant="outlined"
+                          color="warning"
+                          onClick={back}
+                          sx={{
+                            minHeight: 56, borderRadius: `${SHAPE.button}px`, fontWeight: 700,
+                          }}
+                        >
+                          <BackspaceIcon />
+                        </Button>
+                      );
+                    }
+                    return (
+                      <Button
+                        key={k}
+                        variant="outlined"
+                        onClick={() => tap(k)}
+                        sx={{
+                          minHeight: 56, borderRadius: `${SHAPE.button}px`, fontWeight: 700, fontSize: 22,
+                          bgcolor: 'surface.paper', borderColor: 'border.strong', color: 'text.primary',
+                          '&:hover': { bgcolor: 'surface.muted', borderColor: 'role.cashier' },
+                          '&:active': { transform: 'scale(0.96)' },
+                        }}
+                      >
+                        {k}
+                      </Button>
                     );
                   })}
                 </Box>
-                {appliedPreset && (
-                  <Paper
-                    sx={{
-                      p: 1.25,
-                      mb: 2,
-                      borderRadius: `${SHAPE.button}px`,
-                      bgcolor: 'rgba(224, 123, 26, 0.08)',
-                      border: '1px solid #e07b1a',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 1.5,
-                    }}
-                  >
-                    <PercentIcon sx={{ color: '#e07b1a', fontSize: 18 }} />
-                    <Box sx={{ flex: 1 }}>
-                      <Typography sx={{ fontWeight: 700, fontSize: '0.85rem' }}>
-                        {appliedPreset.label} applied
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        Subtotal ${subtotal.toFixed(2)} − ${appliedPreset.amount.toFixed(2)} = ${taxable.toFixed(2)} taxable · Tax ${tax.toFixed(2)} · Total ${recomputedTotal.toFixed(2)}
-                      </Typography>
-                    </Box>
-                    <Button size="small" color="warning" onClick={() => setAppliedPreset(null)} sx={{ minHeight: 32 }}>
-                      Clear
-                    </Button>
-                  </Paper>
+                {error && (
+                  <Alert severity="error" sx={{ borderRadius: `${SHAPE.button}px`, mt: 1.5 }}>
+                    {error}
+                  </Alert>
                 )}
               </>
+            ) : (
+              <Paper
+                sx={{
+                  flex: 1,
+                  p: 2,
+                  borderRadius: `${SHAPE.card}px`,
+                  border: '1px solid',
+                  borderColor: METHOD_TOKENS[method].color,
+                  bgcolor: `${METHOD_TOKENS[method].color}14`,
+                  textAlign: 'center',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 1,
+                  minHeight: 280,
+                }}
+              >
+                <Box
+                  sx={{
+                    width: 56, height: 56, borderRadius: `${SHAPE.button}px`,
+                    bgcolor: METHOD_TOKENS[method].color, color: 'common.white',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    '& .MuiSvgIcon-root': { fontSize: 32 },
+                  }}
+                >
+                  {METHOD_TOKENS[method].icon}
+                </Box>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700, color: METHOD_TOKENS[method].color }}>
+                  Charge ${recomputedTotal.toFixed(2)} via {METHOD_TOKENS[method].label}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {appliedPreset
+                    ? `Subtotal $${subtotal.toFixed(2)} − ${appliedPreset.label} $${appliedPreset.amount.toFixed(2)} = $${taxable.toFixed(2)} taxable · Tax $${tax.toFixed(2)}`
+                    : `Tap Confirm to charge the customer's ${METHOD_TOKENS[method].label.toLowerCase()}.`}
+                </Typography>
+              </Paper>
             )}
+          </Box>
 
+          {/* ─── Column 3: Method ─── */}
+          <Box sx={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
             <Typography variant="overline" sx={{ fontWeight: 700, color: 'text.secondary', display: 'block', mb: 1, letterSpacing: 0.5 }}>
               Method
             </Typography>
             <Box
               sx={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(3, 1fr)',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))',
                 gap: 1,
-                mb: 2,
+                alignContent: 'start',
+                flex: 1,
               }}
             >
               {(Object.keys(METHOD_TOKENS) as PaymentMethod[]).map((key) => {
@@ -807,13 +1197,13 @@ function PaymentDialog({
                       border: '2px solid',
                       borderColor: selected ? m.color : 'border.default',
                       bgcolor: selected ? `${m.color}1f` : 'surface.paper',
-                      p: 1.25,
+                      p: 1.5,
                       cursor: 'pointer',
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
-                      gap: 0.5,
-                      minHeight: 80,
+                      gap: 0.75,
+                      minHeight: 96,
                       transition: 'all 0.12s',
                       '&:hover': { borderColor: m.color },
                       '&:active': { transform: 'scale(0.97)' },
@@ -821,117 +1211,31 @@ function PaymentDialog({
                   >
                     <Box
                       sx={{
-                        width: 32, height: 32, borderRadius: `${SHAPE.button}px`,
+                        width: 40, height: 40, borderRadius: `${SHAPE.button}px`,
                         bgcolor: m.color, color: 'common.white',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        '& .MuiSvgIcon-root': { fontSize: 18 },
+                        '& .MuiSvgIcon-root': { fontSize: 24 },
                       }}
                     >
                       {m.icon}
                     </Box>
-                    <Typography sx={{ fontWeight: 700, fontSize: '0.85rem' }}>
+                    <Typography sx={{ fontWeight: 700, fontSize: '0.95rem' }}>
                       {m.label}
                     </Typography>
                   </Box>
                 );
               })}
             </Box>
-
-            {isCash && (
-              <>
-                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5, mb: 1.5 }}>
-                  <DisplayCard
-                    label="Tendered"
-                    value={`$${tenderedNum.toFixed(2)}`}
-                    color="text.primary"
-                    bg="surface.muted"
-                    border="border.default"
-                  />
-                  <DisplayCard
-                    label={change >= 0 ? 'Change' : 'Short'}
-                    value={`$${Math.abs(change).toFixed(2)}`}
-                    color={change >= 0 ? '#1f9d55' : '#d8453c'}
-                    bg={change >= 0 ? '#e8f6ee' : '#fbe9e8'}
-                    border={change >= 0 ? '#1f9d55' : '#d8453c'}
-                    highlight={tenderedNum > 0}
-                  />
-                </Box>
-                <Box sx={{ display: 'flex', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
-                  <Button size="small" variant="outlined" onClick={exact} sx={{ borderRadius: `${SHAPE.button}px`, minHeight: 40, fontWeight: 600 }}>
-                    Exact ${recomputedTotal.toFixed(2)}
-                  </Button>
-                  <Button size="small" variant="outlined" onClick={() => addQuick(5)} sx={{ borderRadius: `${SHAPE.button}px`, minHeight: 40 }}>+$5</Button>
-                  <Button size="small" variant="outlined" onClick={() => addQuick(10)} sx={{ borderRadius: `${SHAPE.button}px`, minHeight: 40 }}>+$10</Button>
-                  <Button size="small" variant="outlined" onClick={() => addQuick(20)} sx={{ borderRadius: `${SHAPE.button}px`, minHeight: 40 }}>+$20</Button>
-                  <Button size="small" variant="outlined" color="warning" onClick={clearAll} sx={{ borderRadius: `${SHAPE.button}px`, minHeight: 40 }}>Clear</Button>
-                </Box>
-                {error && (
-                  <Alert severity="error" sx={{ borderRadius: `${SHAPE.button}px` }}>
-                    {error}
-                  </Alert>
-                )}
-              </>
-            )}
-
-            {!isCash && (
-              <Paper
-                sx={{
-                  p: 2,
-                  borderRadius: `${SHAPE.card}px`,
-                  border: '1px solid',
-                  borderColor: METHOD_TOKENS[method].color,
-                  bgcolor: `${METHOD_TOKENS[method].color}14`,
-                  textAlign: 'center',
-                }}
+            {isShort && !shortAcknowledged && (
+              <Alert
+                severity="warning"
+                icon={<CancelIcon fontSize="inherit" />}
+                sx={{ mt: 1.5, borderRadius: `${SHAPE.button}px`, fontWeight: 600 }}
               >
-                <Typography variant="subtitle1" sx={{ fontWeight: 700, color: METHOD_TOKENS[method].color }}>
-                  Charge ${recomputedTotal.toFixed(2)} via {METHOD_TOKENS[method].label}
-                </Typography>
-                <Typography variant="caption" color="text.secondary" component="div" sx={{ mt: 0.5 }}>
-                  {appliedPreset
-                    ? `Subtotal $${subtotal.toFixed(2)} − ${appliedPreset.label} $${appliedPreset.amount.toFixed(2)} = $${taxable.toFixed(2)} taxable · Tax $${tax.toFixed(2)}`
-                    : `Tap Confirm to charge the customer's ${METHOD_TOKENS[method].label.toLowerCase()}.`}
-                </Typography>
-              </Paper>
+                Short by ${Math.abs(change).toFixed(2)} — tap the red Short badge to acknowledge.
+              </Alert>
             )}
           </Box>
-
-          {isCash && (
-            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1, alignContent: 'start' }}>
-              {['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'back'].map((k) => {
-                if (k === 'back') {
-                  return (
-                    <Button
-                      key={k}
-                      variant="outlined"
-                      color="warning"
-                      onClick={back}
-                      sx={{
-                        minHeight: 56, borderRadius: `${SHAPE.button}px`, fontWeight: 700,
-                      }}
-                    >
-                      <BackspaceIcon />
-                    </Button>
-                  );
-                }
-                return (
-                  <Button
-                    key={k}
-                    variant="outlined"
-                    onClick={() => tap(k)}
-                    sx={{
-                      minHeight: 56, borderRadius: `${SHAPE.button}px`, fontWeight: 700, fontSize: 22,
-                      bgcolor: 'surface.paper', borderColor: 'border.strong', color: 'text.primary',
-                      '&:hover': { bgcolor: 'surface.muted', borderColor: 'role.cashier' },
-                      '&:active': { transform: 'scale(0.96)' },
-                    }}
-                  >
-                    {k}
-                  </Button>
-                );
-              })}
-            </Box>
-          )}
         </Box>
       </DialogContent>
       <DialogActions sx={{ p: 2, gap: 1.5 }}>
@@ -957,7 +1261,7 @@ function PaymentDialog({
           color="success"
           size="large"
           startIcon={<CheckCircleIcon />}
-          disabled={!canPay || submitting}
+          disabled={!payEnabled || submitting}
           sx={{
             borderRadius: `${SHAPE.button}px`,
             minHeight: 72,
@@ -970,6 +1274,78 @@ function PaymentDialog({
         </Button>
       </DialogActions>
     </Dialog>
+
+    {/* ─── M22 — Short payment confirm popup ───
+        Independent <Dialog> layered on top of the payment dialog.
+        Single OK button. Tapping OK marks the short as acknowledged
+        so the Confirm Pay button becomes enabled. Tapping the
+        backdrop or hitting Esc just closes the popup WITHOUT
+        acknowledging (cashier can re-tap the Short badge to re-open). */}
+    <Dialog
+      open={shortOpen}
+      onClose={() => setShortOpen(false)}
+      maxWidth="xs"
+      fullWidth
+      PaperProps={{
+        sx: {
+          borderRadius: `${SHAPE.dialog}px`,
+          borderTop: '6px solid',
+          borderTopColor: '#d8453c',
+        },
+      }}
+    >
+      <DialogTitle sx={{ fontWeight: 800, color: '#d8453c' }}>
+        Short Payment
+      </DialogTitle>
+      <DialogContent dividers>
+        <Box sx={{ textAlign: 'center', py: 1 }}>
+          <Typography variant="overline" color="text.secondary" sx={{ display: 'block', letterSpacing: 1, fontWeight: 700 }}>
+            Tendered
+          </Typography>
+          <Typography sx={{ fontFamily: 'monospace', fontWeight: 800, fontSize: '2.2rem', color: 'text.primary' }}>
+            ${(shortSnapshot?.tendered ?? tenderedNum).toFixed(2)}
+          </Typography>
+          <Typography variant="overline" color="text.secondary" sx={{ display: 'block', letterSpacing: 1, fontWeight: 700, mt: 2 }}>
+            Total Due
+          </Typography>
+          <Typography sx={{ fontFamily: 'monospace', fontWeight: 800, fontSize: '2.2rem', color: 'role.cashier' }}>
+            ${(shortSnapshot?.total ?? recomputedTotal).toFixed(2)}
+          </Typography>
+          <Typography
+            sx={{
+              mt: 2,
+              fontWeight: 800,
+              fontFamily: 'monospace',
+              fontSize: '1.4rem',
+              color: '#d8453c',
+            }}
+          >
+            Short by ${Math.abs((shortSnapshot?.total ?? recomputedTotal) - (shortSnapshot?.tendered ?? tenderedNum)).toFixed(2)}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
+            Customer paid less than the bill total. Tap OK to record the short payment and close the bill.
+          </Typography>
+        </Box>
+      </DialogContent>
+      <DialogActions sx={{ p: 2 }}>
+        <Button
+          onClick={acceptShort}
+          variant="contained"
+          color="error"
+          size="large"
+          fullWidth
+          sx={{
+            borderRadius: `${SHAPE.button}px`,
+            minHeight: 64,
+            fontWeight: 800,
+            fontSize: '1.1rem',
+          }}
+        >
+          OK
+        </Button>
+      </DialogActions>
+    </Dialog>
+    </>
   );
 }
 

@@ -49,7 +49,8 @@ export interface AdminProduct {
   category_id: number;
   image: string;
   active: boolean;
-  kind?: string;  // overrides category station routing
+  sort: number;
+  kind?: string;  // overrides category station routing — M20.1
 }
 export interface AdminTable {
   id: number;

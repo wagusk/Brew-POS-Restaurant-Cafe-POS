@@ -28,18 +28,26 @@ def _fire_kitchen_ticket(db: Session, order) -> None:
     Never raises. A print failure is logged at warning and otherwise
     silently dropped — the order must remain billable regardless of
     whether the chit reaches the kitchen thermal printer.
+
+    M23 — fires ONE chit per station that has items on this order.
+    The kitchen chit only carries food items; the bar chit only carries
+    drinks. Items routed to "both" appear on both chits as the same
+    logical line so the displays stay in sync.
     """
     try:
         from app.services import tickets, printer
-        payload = tickets.build_kitchen_ticket(db, order)
-        result = printer.auto_print_on_event("on_send_to_kitchen", payload)
-        if result is not None and not result.ok:
-            log.warning(
-                "kitchen ticket for order #%s failed: %s",
-                order.number, result.error,
-            )
+        for station in ("kitchen", "bar"):
+            payload = tickets.build_station_ticket(db, order, station)
+            if payload is None:
+                continue
+            result = printer.auto_print_on_event("on_send_to_kitchen", payload)
+            if result is not None and not result.ok:
+                log.warning(
+                    "%s ticket for order #%s failed: %s",
+                    station, order.number, result.error,
+                )
     except Exception as e:  # never let printer failures escape the endpoint
-        log.warning("kitchen ticket for order #%s raised: %s", order.number, e)
+        log.warning("kitchen/bar ticket for order #%s raised: %s", order.number, e)
 
 
 def _fire_customer_receipt(db: Session, order) -> None:
@@ -287,7 +295,9 @@ async def cancel_endpoint(
 async def reprint_ticket_endpoint(
     order_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("kitchen.view")),
+    # M23 — accept either kitchen.view or bar.view so each station can
+    # reprint its own chit without needing both permissions.
+    user: User = Depends(current_user),
 ):
     """Manually re-fire the kitchen chit for an order.
 
@@ -295,14 +305,41 @@ async def reprint_ticket_endpoint(
     result is returned to the caller so the UI can show a success/error
     toast. Used when the printer jams, the chit is lost, or the kitchen
     needs a fresh copy of the prep list.
+
+    M23 — the station is picked from the caller's role + permissions:
+      - role='bar' or 'bar.view' without 'kitchen.view' → bar ticket
+      - everyone else → kitchen ticket
+    Callers with both permissions get the kitchen ticket (the primary
+    prep line); the bar can always trigger its own via a second call.
     """
     order = get_order(db, order_id)
     if not order:
         raise HTTPException(404, "Not found")
+    perms = set(user.permissions or [])
+    # Kitchen user with both perms → kitchen ticket. Kitchen role default
+    # gives both kitchen.view + bar.view, so the kitchen role always gets
+    # the kitchen chit (the primary prep line). Bar-only (just bar.view)
+    # gets the bar chit. Admin / master get the kitchen chit too (they
+    # can manually trigger the bar via the orders list / future UI).
+    has_bar_only = "bar.view" in perms and "kitchen.view" not in perms
+    has_any_station_perm = "bar.view" in perms or "kitchen.view" in perms
+    if not (has_any_station_perm or user.role in ("admin", "master")):
+        raise HTTPException(
+            403,
+            "Missing permission: kitchen.view or bar.view required to reprint tickets",
+        )
+    station = "bar" if has_bar_only else "kitchen"
     try:
         from app.services import tickets, printer
-        payload = tickets.build_kitchen_ticket(db, order)
+        payload = tickets.build_station_ticket(db, order, station)
+        if payload is None:
+            raise HTTPException(
+                400,
+                f"No items for station '{station}' on this order — nothing to reprint",
+            )
         result = printer.print_bytes(payload)
+    except HTTPException:
+        raise
     except Exception as e:
         log.warning("manual ticket reprint for order #%s raised: %s", order.number, e)
         raise HTTPException(500, f"Print failed: {e}") from e

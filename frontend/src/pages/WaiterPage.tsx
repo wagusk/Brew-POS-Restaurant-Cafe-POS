@@ -190,6 +190,12 @@ export default function WaiterPage() {
   const total = cart.items
     .filter((i) => !i.fromExisting)
     .reduce((s, i) => s + (i.product.price + i.modifiers.reduce((sm, m) => sm + m.price_delta, 0)) * i.qty, 0);
+  // Existing-bill subtotal (read-only items already on the table).
+  // Used to compute the grand "Total bill amount" shown in the footer
+  // when the waiter is appending to an open bill.
+  const existingTotal = cart.items
+    .filter((i) => i.fromExisting)
+    .reduce((s, i) => s + (i.product.price + i.modifiers.reduce((sm, m) => sm + m.price_delta, 0)) * i.qty, 0);
 
   const tileColor = (status: TableStatus) =>
     status === 'openbill'
@@ -458,10 +464,19 @@ export default function WaiterPage() {
           },
         }}
       >
-        <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
+        <DialogTitle
+          sx={{
+            fontWeight: 800,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            textAlign: 'center',
+            gap: 1,
+          }}
+        >
           {open?.name} — Take Order
        </DialogTitle>
-        <DialogContent dividers sx={{ display: 'flex', gap: 0, p: 0 }}>
+        <DialogContent dividers sx={{ display: 'flex', gap: 0, p: 0, overflow: 'hidden' }}>
           {/* ─── Column 1 (30%) — Order / Cart panel ─────────────────── */}
           <Box
             sx={{
@@ -473,6 +488,8 @@ export default function WaiterPage() {
               bgcolor: 'surface.elevated',
               borderRight: '1px solid',
               borderColor: 'border.default',
+              minHeight: 0,
+              overflow: 'hidden',
             }}
           >
             <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
@@ -539,6 +556,9 @@ export default function WaiterPage() {
                           {i.qty}×
                        </Typography>
                         <Box sx={{ flex: 1 }} />
+                        <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
+                          Amount
+                        </Typography>
                         <Typography variant="body2" sx={{ fontWeight: 700 }}>
                           ${((i.product.price + i.modifiers.reduce((s, m) => s + m.price_delta, 0)) * i.qty).toFixed(2)}
                        </Typography>
@@ -603,6 +623,9 @@ export default function WaiterPage() {
                         <AddIcon fontSize="small" />
                      </IconButton>
                       <Box sx={{ flex: 1 }} />
+                      <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
+                        Amount
+                      </Typography>
                       <Typography variant="body2" sx={{ fontWeight: 700 }}>
                         ${((i.product.price + i.modifiers.reduce((s, m) => s + m.price_delta, 0)) * i.qty).toFixed(2)}
                      </Typography>
@@ -612,13 +635,25 @@ export default function WaiterPage() {
               })()}
            </Box>
             <Divider sx={{ my: 1 }} />
-            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-              <Typography sx={{ fontWeight: 700 }}>
-                {cart.appendingToOrderId != null ? 'New items total' : 'Total'}
-             </Typography>
-              <Typography sx={{ fontWeight: 700 }}>${total.toFixed(2)}</Typography>
-           </Box>
-         </Box>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                <Typography sx={{ fontWeight: 700 }}>
+                  {cart.appendingToOrderId != null ? 'New items total' : 'Total'}
+                </Typography>
+                <Typography sx={{ fontWeight: 700 }}>${total.toFixed(2)}</Typography>
+              </Box>
+              {cart.appendingToOrderId != null && (
+                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography sx={{ fontWeight: 800, color: 'role.waiter' }}>
+                    Total bill amount
+                  </Typography>
+                  <Typography sx={{ fontWeight: 800, color: 'role.waiter' }}>
+                    ${(existingTotal + total).toFixed(2)}
+                  </Typography>
+                </Box>
+              )}
+            </Box>
+          </Box>
 
           {/* ─── Column 2 (20%) — Category tiles ────────────────────── */}
           <Box
@@ -633,6 +668,7 @@ export default function WaiterPage() {
               borderColor: 'border.default',
               bgcolor: 'surface.muted',
               overflowY: 'auto',
+              minHeight: 0,
             }}
           >
             <Typography
@@ -703,14 +739,31 @@ export default function WaiterPage() {
          </Box>
 
           {/* ─── Column 3 (50%) — Product tiles ─────────────────────── */}
-          <Box sx={{ width: '50%', minWidth: 360, p: 2.5 }}>
+          <Box
+            sx={{
+              width: '50%',
+              minWidth: 360,
+              display: 'flex',
+              flexDirection: 'column',
+              minHeight: 0,
+              overflow: 'hidden',
+            }}
+          >
             <Box
               sx={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
-                gap: 1.25,
+                flex: 1,
+                overflowY: 'auto',
+                minHeight: 0,
+                p: 2.5,
               }}
             >
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+                  gap: 1.25,
+                }}
+              >
               {visible.map((p) => {
                 const catColor = categories.find((c) => c.id === p.category_id)?.color || '#2b6cff';
                 const onTable = open
@@ -767,11 +820,12 @@ export default function WaiterPage() {
                       ${p.price.toFixed(2)}
                    </Typography>
                  </Paper>
-                );
-              })}
-           </Box>
-         </Box>
-       </DialogContent>
+                 );
+                 })}
+              </Box>
+            </Box>
+          </Box>
+        </DialogContent>
         <DialogActions sx={{ p: 2, gap: 1.5 }}>
           <Button
             onClick={() => { setOpen(null); dispatch(clear()); dispatch(setTable(null)); }}
