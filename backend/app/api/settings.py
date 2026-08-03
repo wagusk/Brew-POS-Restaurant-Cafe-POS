@@ -14,7 +14,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy.orm import Session
 from sqlalchemy import inspect as sa_inspect
 
@@ -30,6 +30,8 @@ from app.core.config import (
     set_active_db_url,
     set_tax_rate,
     reset_persisted_settings,
+    get_discount_policy,
+    set_discount_policy,
 )
 from app.core.security import require_role
 from app.models import User as UserModel
@@ -72,6 +74,9 @@ class SettingsOut(BaseModel):
     db_file_exists: bool
     product_count: int
     user_count: int
+    # M21 — discount policy inline so the unified "Tax & Discounts"
+    # admin menu only needs one GET to render both sections.
+    discount_policy: dict
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -122,6 +127,7 @@ def _build_settings_out(db: Session) -> SettingsOut:
         db_file_exists=(fp.exists() if fp else True),
         product_count=count_products(db),
         user_count=count_users(db),
+        discount_policy=get_discount_policy(),
     )
 
 
@@ -312,3 +318,52 @@ def test_printer(db: Session = Depends(get_db), user: UserModel = Depends(requir
     payload = build_test_ticket(db)
     res: PrintResult = print_bytes(payload)
     return PrintResultOut(**res.to_dict())
+
+
+# ── Discount policy (M21) ──────────────────────────────────────────
+class DiscountPresetIn(BaseModel):
+    """M21.1 — a preset row is `{label, mode, value}` where mode is
+    'amount' (USD) or 'percent' (0–100) and value carries the dollar
+    amount or the percent accordingly. Cashier flow converts percent
+    presets into a resolved dollar amount against the bill subtotal
+    at close-time. Free-form discount dollar amounts sent by the
+    admin still go through the legacy `discount` field on close.
+    The shape validator below enforces `value <= 100` when the mode
+    is percent (so a stray 250-percent typo is rejected at the
+    boundary); unlimited dollar values for amount-mode."""
+    label: str = Field(min_length=1, max_length=32)
+    mode: str = Field(default="amount", pattern=r"^(amount|percent)$")
+    value: float = Field(gt=0, le=10000)
+
+    @model_validator(mode="after")
+    def _cap_percent(self):
+        if self.mode == "percent" and self.value > 100:
+            raise ValueError("value must be <= 100 when mode='percent'")
+        return self
+
+
+class DiscountPolicyOut(BaseModel):
+    """Mirror of `config.DEFAULT_DISCOUNT_POLICY`. Returned by GET so
+    the admin UI always sees a fully-defaulted policy."""
+    max_discount_pct: float
+    presets: list[DiscountPresetIn]
+    require_reason: bool
+
+
+class DiscountPolicyIn(BaseModel):
+    """PATCH-style input. Every field optional; missing fields are
+    left untouched on disk."""
+    max_discount_pct: float | None = Field(default=None, ge=0, le=1)
+    presets: list[DiscountPresetIn] | None = None
+    require_reason: bool | None = None
+
+
+@router.get("/discount", response_model=DiscountPolicyOut)
+def get_discount_settings(user: UserModel = Depends(require_role("admin"))):
+    return DiscountPolicyOut(**get_discount_policy())
+
+
+@router.put("/discount", response_model=DiscountPolicyOut)
+def update_discount_settings(payload: DiscountPolicyIn, user: UserModel = Depends(require_role("admin"))):
+    patch = payload.model_dump(exclude_none=True)
+    return DiscountPolicyOut(**set_discount_policy(patch))

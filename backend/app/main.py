@@ -114,6 +114,17 @@ def _migrate_station_columns() -> None:
             with engine.begin() as connection:
                 connection.execute(text("ALTER TABLE order_items ADD COLUMN station VARCHAR(20) DEFAULT 'kitchen' NOT NULL"))
 
+    # M21 — discount columns on orders (subtotal-discount=taxable base).
+    # `create_all` doesn't add new columns to existing tables, so we
+    # ALTER them on startup if missing.
+    if "orders" in tables:
+        order_cols = {c["name"] for c in inspect(engine).get_columns("orders")}
+        with engine.begin() as connection:
+            if "discount" not in order_cols:
+                connection.execute(text("ALTER TABLE orders ADD COLUMN discount FLOAT DEFAULT 0.0 NOT NULL"))
+            if "discount_reason" not in order_cols:
+                connection.execute(text("ALTER TABLE orders ADD COLUMN discount_reason VARCHAR(120) DEFAULT '' NOT NULL"))
+
 # Create tables on the active engine. Done eagerly at startup so the
 # first request doesn't pay the schema-creation cost.
 Base.metadata.create_all(bind=current_engine())

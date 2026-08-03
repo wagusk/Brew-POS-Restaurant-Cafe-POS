@@ -179,14 +179,105 @@ export const Orders = {
   get: (id: number) => api.get<Order>(`/orders/${id}`).then((r) => r.data),
   update: (id: number, payload: unknown) => api.patch<Order>(`/orders/${id}`, payload).then((r) => r.data),
   accept: (id: number) => api.post<Order>(`/orders/${id}/accept`, {}).then((r) => r.data),
-  close: (id: number, payload: { payment_method: string; tendered: number }) =>
-    api.post<Order>(`/orders/${id}/close`, payload).then((r) => r.data),
+  close: (id: number, payload: {
+    payment_method: string;
+    tendered: number;
+    // M21 — discount knobs. Either `discount` (free-form dollar amount,
+    // admin path — requires `discount.apply` permission) or `preset_label`
+    // (cashier path — resolved server-side against the policy, percent
+    // presets computed against the bill subtotal). Both reduce the
+    // taxable base so tax is charged on (subtotal - discount) only.
+    discount?: number;
+    discount_reason?: string;
+    preset_label?: string;
+  }) => api.post<Order>(`/orders/${id}/close`, payload).then((r) => r.data),
   cancel: (id: number, payload: { reason: string; item_id?: number }) =>
     api.post<Order>(`/orders/${id}/cancel`, payload).then((r) => r.data),
   appendItems: (id: number, payload: { items: Array<{ product_id: number; qty: number; modifiers?: number[]; notes?: string }> }) =>
     api.post<Order>(`/orders/${id}/items`, payload).then((r) => r.data),
   stats: () => api.get<Stats>('/orders/_stats/today').then((r) => r.data),
+  printTicket: (id: number) =>
+    api.post<PrintResult>(`/orders/${id}/print-ticket`, {}).then((r) => r.data),
+  printReceipt: (id: number) =>
+    api.post<PrintResult>(`/orders/${id}/print-receipt`, {}).then((r) => r.data),
 };
+
+// ── Printer ────────────────────────────────────────────────────────────
+// Mirrors backend `PrinterSettingsOut` (backend/api/settings.py). Every
+// sub-dict is opaque to the client — we ship the whole subtree back to
+// PUT so partial edits survive a round-trip.
+export interface PrinterConfig {
+  mode: 'dummy' | 'network' | 'usb';
+  network: { host: string; port: number; timeout_sec: number };
+  usb: { vendor_id: number; product_id: number };
+  paper: {
+    width_mm: 58 | 80;
+    header_lines: string[];
+    footer_lines: string[];
+    cut_paper: boolean;
+  };
+  auto_print: { on_send_to_kitchen: boolean; on_payment: boolean };
+  dry_run: boolean;
+}
+export interface PrintResult {
+  ok: boolean;
+  mode: string;
+  dry_run: boolean;
+  bytes_written: number;
+  elapsed_ms: number;
+  error: string | null;
+}
+
+export const Printer = {
+  get: () => api.get<PrinterConfig>('/admin/settings/printer').then((r) => r.data),
+  update: (patch: Partial<PrinterConfig>) =>
+    api.put<PrinterConfig>('/admin/settings/printer', patch).then((r) => r.data),
+  test: () => api.post<PrintResult>('/admin/settings/printer/test', {}).then((r) => r.data),
+};
+
+// ── Discount policy (M21) ───────────────────────────────────────────
+// Mirrors backend `DiscountPolicyOut` in `app/api/settings.py`. The
+// policy is admin-only; cashiers read it indirectly through the
+// PaymentDialog (which calls `Discount.get()` on mount).
+export interface DiscountPreset {
+  label: string;
+  // M21.1 — preset can be a fixed dollar amount OR a percent of the
+  // bill subtotal. `amount`-mode presets return `value` unchanged;
+  // `percent`-mode presets are resolved server-side as
+  // `subtotal * value / 100` at close-time.
+  mode: 'amount' | 'percent';
+  // Stored value: dollars when mode='amount' (e.g. 5.0 → -$5),
+  // percent (0–100) when mode='percent' (e.g. 10 → -10%).
+  value: number;
+}
+export interface DiscountPolicy {
+  max_discount_pct: number;   // fraction of subtotal, e.g. 0.50 = 50%
+  presets: DiscountPreset[];
+  require_reason: boolean;
+}
+
+export const Discount = {
+  get: () => api.get<DiscountPolicy>('/admin/settings/discount').then((r) => r.data),
+  update: (patch: Partial<DiscountPolicy>) =>
+    api.put<DiscountPolicy>('/admin/settings/discount', patch).then((r) => r.data),
+};
+
+/**
+ * Resolve a discount preset to a dollar amount against a bill subtotal.
+ * Used by the cashier's PaymentDialog to show the live "$-X" preview
+ * under each preset button — the actual server-side close endpoint also
+ * re-runs this same helper, so the UI never drifts from the backend.
+ */
+export function resolvePresetDiscount(
+  preset: DiscountPreset,
+  subtotal: number,
+): number {
+  const v = Number(preset?.value ?? 0);
+  if (preset?.mode === 'percent') {
+    return Math.max(0, Math.round(Number(subtotal || 0) * (v / 100) * 100) / 100);
+  }
+  return Math.max(0, Math.round(v * 100) / 100);
+}
 
 // ── Settings: tax rate + database location ────────────────────────────
 export interface SettingsPayload {
@@ -197,6 +288,10 @@ export interface SettingsPayload {
   db_file_exists: boolean;
   product_count: number;
   user_count: number;
+  // M21 — included so the unified "Tax & Discounts" admin menu can
+  // render with a single GET round-trip. Backend merged the policy
+  // into /admin/settings to avoid two calls per page load.
+  discount_policy: DiscountPolicy;
 }
 
 export const Settings = {

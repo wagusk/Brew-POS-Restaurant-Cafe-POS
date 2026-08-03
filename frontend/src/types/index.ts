@@ -98,6 +98,11 @@ export interface Order {
   customer_name: string;
   notes: string;
   subtotal: number;
+  // M21 — discount applied at checkout. Set by close_order when a
+  // preset is tapped (or by admin free-form). Discount reduces the
+  // taxable base so tax is charged on `subtotal - discount`.
+  discount?: number;
+  discount_reason?: string;
   tax: number;
   total: number;
   created_at: string;

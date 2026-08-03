@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Box, Paper, Typography, Button, Chip, Stack, Dialog, DialogTitle,
-  DialogContent, DialogActions, TextField,
+  DialogContent, DialogActions, TextField, Snackbar, IconButton, CircularProgress,
   Alert, Tooltip,
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -13,6 +13,7 @@ import InventoryIcon from '@mui/icons-material/Inventory';
 import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 import PersonOffIcon from '@mui/icons-material/PersonOff';
 import VerifiedIcon from '@mui/icons-material/Verified';
+import PrintOutlinedIcon from '@mui/icons-material/PrintOutlined';
 import { Orders } from '../lib/api';
 import { ws } from '../lib/ws';
 import type { Order, OrderItem } from '../types';
@@ -49,8 +50,30 @@ export default function KitchenPage() {
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Toast that announces when an order disappears from the board.
+
   const [lastCancelled, setLastCancelled] = useState<{ number: number; reason: string } | null>(null);
+  // M20 — reprint ticket state (one in-flight reprint at a time keeps the
+  // UI simple; the kitchen rarely fires more than one reprint at once).
+  const [reprintingId, setReprintingId] = useState<number | null>(null);
+  const [snack, setSnack] = useState<{ msg: string; severity: 'success' | 'error' | 'info' } | null>(null);
+
+  const reprint = async (orderId: number) => {
+    setReprintingId(orderId);
+    try {
+      const res = await Orders.printTicket(orderId);
+      setSnack({
+        msg: res.ok
+          ? `Ticket reprinted · ${res.bytes_written} bytes`
+          : `Reprint failed · ${res.error ?? 'unknown error'}`,
+        severity: res.ok ? 'success' : 'error',
+      });
+    } catch (e: any) {
+      const detail = e?.response?.data?.detail ?? e?.message ?? 'Reprint request failed';
+      setSnack({ msg: typeof detail === 'string' ? detail : JSON.stringify(detail), severity: 'error' });
+    } finally {
+      setReprintingId(null);
+    }
+  };
 
   const reload = () => {
     Orders.list().then((all) => {
@@ -332,17 +355,38 @@ export default function KitchenPage() {
                  </Paper>
                 ))}
              </Stack>
-              <Button
-                fullWidth
-                variant="contained"
-                color="primary"
-                size="large"
-                startIcon={<CheckCircleIcon />}
-                onClick={() => completeOrder(o.id)}
-                sx={{ mt: 2, borderRadius: RADIUS, minHeight: 52, fontWeight: 700 }}
-              >
-                Mark All Served
-             </Button>
+              <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
+                <Button
+                  fullWidth
+                  variant="contained"
+                  color="primary"
+                  size="large"
+                  startIcon={<CheckCircleIcon />}
+                  onClick={() => completeOrder(o.id)}
+                  sx={{ borderRadius: RADIUS, minHeight: 52, fontWeight: 700 }}
+                >
+                  Mark All Served
+              </Button>
+                <Tooltip title="Reprint kitchen ticket">
+                  <span>
+                    <IconButton
+                      color="primary"
+                      disabled={reprintingId === o.id}
+                      onClick={() => reprint(o.id)}
+                      sx={{
+                        borderRadius: RADIUS, minWidth: 52, minHeight: 52,
+                        border: '1px solid', borderColor: 'primary.main',
+                        bgcolor: 'primary.main', color: 'common.white',
+                        '&:hover': { bgcolor: 'primary.main', filter: 'brightness(0.92)' },
+                      }}
+                    >
+                      {reprintingId === o.id
+                        ? <CircularProgress size={20} sx={{ color: 'common.white' }} />
+                        : <PrintOutlinedIcon />}
+                </IconButton>
+              </span>
+            </Tooltip>
+             </Box>
            </Paper>
           );
         })}
@@ -486,9 +530,26 @@ export default function KitchenPage() {
             sx={{ borderRadius: RADIUS, fontWeight: 700, minWidth: 140 }}
           >
             {submitting ? 'Cancelling…' : 'Reject'}
-         </Button>
-       </DialogActions>
-     </Dialog>
-   </Box>
-  );
-}
+            </Button>
+            </DialogActions>
+            </Dialog>
+
+            {/* M20 — Reprint ticket toast */}
+            <Snackbar
+            open={!!snack}
+            autoHideDuration={4000}
+            onClose={() => setSnack(null)}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+            >
+            <Alert
+            severity={snack?.severity ?? 'info'}
+            variant="filled"
+            onClose={() => setSnack(null)}
+            sx={{ borderRadius: RADIUS }}
+            >
+            {snack?.msg ?? ''}
+            </Alert>
+            </Snackbar>
+            </Box>
+            );
+            }

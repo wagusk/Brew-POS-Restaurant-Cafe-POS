@@ -8,7 +8,7 @@ from app.db.session import get_db
 from app.schemas import (
     CheckoutIn, OrderOut, OrderStatusIn, StatsOut, CloseOrderIn, CancelOrderIn,
 )
-from app.models import User
+from app.models import User, Order
 from app.core.security import current_user, require_role, require_permission
 from app.services import (
     submit_order, list_orders, get_order, update_order_status, to_order_out,
@@ -171,11 +171,83 @@ async def close_endpoint(order_id: int, payload: CloseOrderIn, db: Session = Dep
     """Cashier closes a bill after the kitchen has accepted it.
 
     Records the payment and transitions the order to 'paid'.
+
+    M21.1 — discount rules (two paths):
+      • Preset path (cashier UX): the cashier passes `preset_label`
+        which the backend resolves against the active policy. A
+        matching preset is auto-converted to a dollar amount (amount
+        presets use the stored value; percent presets compute against
+        the bill subtotal). Resolved amount is capped at
+        `max_discount_pct` of the subtotal — cashier DOES NOT need
+        the `discount.apply` permission for this path.
+      • Free-form path (admin UX): the caller passes a raw `discount`
+        dollar amount + `discount_reason`. This still requires the
+        `discount.apply` permission; cap check is bypassed for admins.
+      • If `require_reason` is set in the discount policy and the
+        caller didn't supply one, the request is rejected.
     """
+    from app.core.config import get_discount_policy, resolve_preset_discount
+
+    # 1. Resolve preset_label → dollar amount if provided.
+    resolved_discount = max(0.0, float(payload.discount or 0))
+    applied_reason = (payload.discount_reason or "").strip()
+    preset_applied = False
+    if payload.preset_label:
+        policy = get_discount_policy()
+        # Match by label (case-sensitive, full string). The cashier UX
+        # passes exactly the label that's displayed on the button.
+        match = next(
+            (p for p in policy.get("presets", []) if p.get("label") == payload.preset_label),
+            None,
+        )
+        if not match:
+            raise HTTPException(
+                404,
+                f"Discount preset '{payload.preset_label}' not found in policy",
+            )
+        # Look up the subtotal first so percent presets resolve correctly.
+        order_for_subtotal = db.get(Order, order_id)
+        if not order_for_subtotal:
+            raise HTTPException(404, "Order not found")
+        resolved_discount = resolve_preset_discount(match, order_for_subtotal.subtotal)
+        applied_reason = applied_reason or str(match.get("label") or "")
+        preset_applied = True
+
+    # 2. Permission gate — only required for FREE-FORM (admin) discounts.
+    # Cashier-preset paths pass because admins configured the presets.
+    if resolved_discount > 0 and not preset_applied:
+        if "discount.apply" not in (user.permissions or []):
+            raise HTTPException(
+                403,
+                "You don't have permission to apply a discount. Ask an admin.",
+            )
+
+    # 3. Reason required?
+    if resolved_discount > 0:
+        policy = get_discount_policy()
+        if policy.get("require_reason") and not applied_reason:
+            raise HTTPException(400, "Discount reason is required")
+
+    # 4. Apply via service.
     try:
-        order = close_order(db, order_id, payload.payment_method, payload.tendered)
+        order = close_order(
+            db, order_id,
+            payload.payment_method, payload.tendered,
+            discount=resolved_discount, discount_reason=applied_reason,
+        )
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+    # 5. Max-cap guard for non-admin cashiers using the preset path.
+    if order.discount > 0 and user.role != "admin":
+        policy = get_discount_policy()
+        cap = float(policy.get("max_discount_pct", 0)) * order.subtotal
+        if order.discount > cap + 0.005:  # tolerance for float rounding
+            raise HTTPException(
+                400,
+                f"Discount ${order.discount:.2f} exceeds the {policy['max_discount_pct']*100:.0f}% cap (${cap:.2f})",
+            )
+
     out = to_order_out(order)
     await manager.broadcast("order_updated", out.model_dump())
     _fire_customer_receipt(db, order)

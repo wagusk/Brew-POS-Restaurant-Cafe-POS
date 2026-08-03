@@ -1,25 +1,24 @@
 {
-  "tax_rate": 0.12,
-  "printer": {
-    "mode": "dummy",
-    "network": {
-      "host": "127.0.0.1",
-      "port": 9100,
-      "timeout_sec": 2.0
-    },
-    "usb": {
-      "vendor_id": 1208,
-      "product_id": 514
-    },
-    "paper": {
-      "width_mm": 80,
-      "header_text": "Brew-POS",
-      "footer_text": "Thank you!"
-    },
-    "auto_print": {
-      "on_send_to_kitchen": true,
-      "on_payment": true
-    },
-    "dry_run": false
-  }
+  "discount_policy": {
+    "max_discount_pct": 0.5,
+    "presets": [
+      {
+        "label": "VIP",
+        "mode": "amount",
+        "value": 5.0
+      },
+      {
+        "label": "Loyalty 10%",
+        "mode": "percent",
+        "value": 10.0
+      },
+      {
+        "label": "Staff meal",
+        "mode": "amount",
+        "value": 3.0
+      }
+    ],
+    "require_reason": true
+  },
+  "tax_rate": 0.1
 }

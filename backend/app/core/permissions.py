@@ -17,11 +17,16 @@ PERMISSIONS = (
     "admin.manage_users",
     "admin.manage_settings",
     "admin.reports",
+    "settings.view",
+    "discount.apply",  # M21 — gate for applying non-zero discount at checkout
 )
 
 ROLE_PERMISSIONS: dict[str, set[str]] = {
     "admin": set(PERMISSIONS),
     "master": set(PERMISSIONS),  # Master has all permissions including menu access
+    # M21 — cashier defaults DO NOT include `discount.apply`. Admins
+    # can grant it per-user from the Users admin page if they want
+    # cashiers to be able to apply discounts under the configured cap.
     "cashier": {"dashboard.view", "cashier.view", "menu.view"},
     "waiter": {"dashboard.view", "waiter.view", "menu.view"},
     "kitchen": {"dashboard.view", "kitchen.view", "bar.view", "menu.view"},

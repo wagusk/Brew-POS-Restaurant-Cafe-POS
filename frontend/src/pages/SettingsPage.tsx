@@ -3,11 +3,10 @@ import {
   Box, Paper, Typography, Grid, Button, Chip,
   Dialog, DialogTitle, DialogContent, TextField,
   Switch, FormControlLabel, Stack, Divider, InputAdornment,
-  Alert, CircularProgress,
+  Alert, CircularProgress, Snackbar,
 } from '@mui/material';
 import RestaurantMenuIcon from '@mui/icons-material/RestaurantMenu';
 import TableRestaurantIcon from '@mui/icons-material/TableRestaurant';
-import BarChartIcon from '@mui/icons-material/BarChart';
 import SoupKitchenIcon from '@mui/icons-material/SoupKitchen';
 import LocalBarIcon from '@mui/icons-material/LocalBar';
 import TuneIcon from '@mui/icons-material/Tune';
@@ -21,7 +20,15 @@ import PercentIcon from '@mui/icons-material/Percent';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import WarningIcon from '@mui/icons-material/Warning';
 import SettingsIcon from '@mui/icons-material/Settings';
-import { Admin, Settings, type SettingsPayload } from '../lib/api';
+import PrintIcon from '@mui/icons-material/Print';
+import RouterIcon from '@mui/icons-material/Router';
+import UsbIcon from '@mui/icons-material/Usb';
+import NetworkCheckIcon from '@mui/icons-material/NetworkCheck';
+import AddIcon from '@mui/icons-material/Add';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import PrintOutlinedIcon from '@mui/icons-material/PrintOutlined';
+import LocalOfferIcon from '@mui/icons-material/LocalOffer';
+import { Admin, Settings, Printer, Discount, type SettingsPayload, type PrinterConfig, type PrintResult, type DiscountPolicy, type DiscountPreset } from '../lib/api';
 import type { AdminCategory, AdminProduct, AdminTable } from '../lib/api';
 
 // ─────────────────────────────────────────────────────────────────────
@@ -36,13 +43,16 @@ const SHAPE = {
 };
 
 // ── Main menu color codes ────────────────────────────────────────────
-type MainKey = 'products' | 'tables' | 'tax' | 'database';
+type MainKey = 'products' | 'tables' | 'taxdiscounts' | 'database' | 'printer';
 
 const MAIN_COLOR: Record<MainKey, string> = {
   products: '#2b6cff',
   tables: '#0c8a7a',
-  tax: '#e07b1a',
+  // M21 — single color code for both tax + discount sections so they
+  // visually belong to the same admin workspace.
+  taxdiscounts: '#e07b1a',
   database: '#5b6472',
+  printer: '#7b3aa8',
 };
 
 interface MainItem {
@@ -54,12 +64,20 @@ interface MainItem {
 const MAIN_ITEMS: MainItem[] = [
   { key: 'products', label: 'Products', icon: <RestaurantMenuIcon /> },
   { key: 'tables', label: 'Tables', icon: <TableRestaurantIcon /> },
-  { key: 'tax', label: 'Tax', icon: <PercentIcon /> },
+  // M21 — single menu entry unifies the old "Tax" + "Discount"
+  // workspaces. Tax is configurable manually (no fixed slider/chip
+  // template); discount is a CRUD list of preset buttons the cashier
+  // can tap on a closed bill.
+  { key: 'taxdiscounts', label: 'Tax & Discounts', icon: <PercentIcon /> },
   // Database + Database Ops are merged into one menu entry — both workspaces
   // (URL editor + operation tiles) render stacked under the single "Database"
   // tile so admins don't have to bounce between two near-identical grey
   // buttons to manage the DB.
   { key: 'database', label: 'Database', icon: <StorageIcon /> },
+  // Printer config — mode (dummy/network/usb), paper, header/footer,
+  // auto-print toggles, dry-run. Test Print button fires a real ticket
+  // through the configured sender so admins can verify reachability.
+  { key: 'printer', label: 'Printer', icon: <PrintIcon /> },
 ];
 
 // ─────────────────────────────────────────────────────────────────────
@@ -267,8 +285,8 @@ export default function SettingsPage() {
         {main === 'tables' && (
           <TablesWorkspace color={color} />
         )}
-        {main === 'tax' && (
-          <TaxWorkspace color={color} />
+        {main === 'taxdiscounts' && (
+          <TaxDiscountsWorkspace color={color} />
         )}
         {main === 'database' && (
           <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -278,10 +296,13 @@ export default function SettingsPage() {
             <DatabaseWorkspace color={color} />
             <Divider sx={{ borderColor: 'border.soft' }} />
             <DbOpsWorkspace color={color} />
-        </Box>
+       </Box>
         )}
-     </Box>
+        {main === 'printer' && (
+          <PrinterWorkspace color={MAIN_COLOR.printer} />
+        )}
    </Box>
+ </Box>
   );
 }
 
@@ -970,21 +991,92 @@ function TableForm({
 // ─────────────────────────────────────────────────────────────────────
 // TAX WORKSPACE
 // ─────────────────────────────────────────────────────────────────────
-function TaxWorkspace({ color }: { color: string }) {
+// ─────────────────────────────────────────────────────────────────────
+// TAX & DISCOUNTS WORKSPACE — M21
+// One menu entry, two stacked Paper sections:
+//
+//   ┌─ TAX ─────────────────────────┐
+//   │  Free-form numeric input      │  (no slider, no template)
+//   │  (% of subtotal, 0–100)        │
+//   │  Save button                   │
+//   └────────────────────────────────┘
+//
+//   ┌─ DISCOUNT PRESETS ─────────────┐
+//   │  Add / edit / delete row list  │  Each preset is a $ button
+//   │  Max cap (% subtotal) +        │  the cashier will see on a
+//   │  Require-reason toggle          │  closed bill (later).
+//   └────────────────────────────────┘
+//
+// Both sections share one GET /admin/settings round-trip
+// (SettingsOut now carries `discount_policy` inline).
+// ─────────────────────────────────────────────────────────────────────
+function TaxDiscountsWorkspace({ color }: { color: string }) {
   const [settings, setSettings] = useState<SettingsPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [taxDraft, setTaxDraft] = useState<number>(0.10);
+  const [toast, setToast] = useState<{ msg: string; severity: 'success' | 'error' | 'info' } | null>(null);
+
+  // ── Tax draft (free-form numeric input, no template/chips) ────────
+  // The input accepts ANY value 0–100 (we map to the 0.0–1.0 fraction
+  // the backend persists). Admin types a literal percent — no slider,
+  // no quick-pick — so changing the rate is explicit, never accidental.
+  const [taxInput, setTaxInput] = useState<string>('10.00');
   const [taxDirty, setTaxDirty] = useState(false);
   const [savingTax, setSavingTax] = useState(false);
+
+  // ── Discount drafts ───────────────────────────────────────────────
+  const [capInput, setCapInput] = useState<string>('50.00');
+  const [capDirty, setCapDirty] = useState(false);
+  const [savingDiscount, setSavingDiscount] = useState(false);
+  const [presets, setPresets] = useState<DiscountPreset[]>([]);
+  // M21.1 — preset draft now carries mode (amount | percent) and value
+  // (dollars for amount, 0–100 for percent) so the admin can flip each
+  // row's semantics without losing the rest of the line.
+  const [presetDraft, setPresetDraft] = useState<{
+    label: string;
+    mode: 'amount' | 'percent';
+    value: string;
+  }>({ label: '', mode: 'amount', value: '' });
+  const [editingPreset, setEditingPreset] = useState<number | null>(null); // index being edited
+
+  // Migrate legacy {label, amount} shapes when reading from disk —
+  // older settings.json files predate M21.1's mode+value split.
+  const migratePresets = (rows: any[]): DiscountPreset[] => {
+    if (!Array.isArray(rows)) return [];
+    return rows.map((r) => {
+      if (!r || typeof r !== 'object') return null;
+      if (r.mode === 'amount' || r.mode === 'percent') {
+        return {
+          label: String(r.label || '').slice(0, 32),
+          mode: r.mode,
+          value: Number(r.value ?? 0),
+        };
+      }
+      const amt = Number(r.amount ?? 0);
+      return {
+        label: String(r.label || '').slice(0, 32),
+        mode: 'amount',
+        value: amt,
+      };
+    }).filter((r): r is DiscountPreset => !!r && !!r.label);
+  };
 
   const reload = () => {
     setLoading(true);
     Settings.get()
       .then((s) => {
         setSettings(s);
-        setTaxDraft(s.tax_rate);
+        const taxPct = Number(s.tax_rate ?? 0) * 100;
+        setTaxInput(taxPct.toFixed(2));
         setTaxDirty(false);
+        const pol = (s as any).discount_policy ?? {
+          max_discount_pct: 0.5,
+          presets: [],
+          require_reason: true,
+        };
+        setCapInput((Number(pol.max_discount_pct ?? 0) * 100).toFixed(2));
+        setCapDirty(false);
+        setPresets(migratePresets(pol.presets));
         setError(null);
       })
       .catch((e) => setError(e?.response?.data?.detail ?? e?.message ?? 'Failed to load'))
@@ -993,18 +1085,126 @@ function TaxWorkspace({ color }: { color: string }) {
 
   useEffect(() => { reload(); }, []);
 
+  // Guard for adding/updating a preset row (mode-aware validation).
+  const validatePresetDraft = (label: string, mode: 'amount' | 'percent', valueNum: number): string | null => {
+    if (!label) return 'Preset label cannot be empty.';
+    if (Number.isNaN(valueNum) || valueNum <= 0) return 'Preset value must be positive.';
+    if (mode === 'percent' && valueNum > 100) return 'Percent presets must be 100 or less.';
+    return null;
+  };
+
+  // Preset CRUD — all deferred until "Save discounts" — keeps the PUT
+  // path minimal and the optimistic UX predictable.
+  const addOrUpdatePreset = () => {
+    const label = presetDraft.label.trim();
+    const valueNum = parseFloat(presetDraft.value);
+    const err = validatePresetDraft(label, presetDraft.mode, valueNum);
+    if (err) { setToast({ msg: err, severity: 'error' }); return; }
+    const next = [...presets];
+    const cleanRow: DiscountPreset = {
+      label: label.slice(0, 32),
+      mode: presetDraft.mode,
+      value: Math.round(valueNum * 100) / 100,
+    };
+    if (editingPreset !== null && editingPreset >= 0 && editingPreset < next.length) {
+      next[editingPreset] = cleanRow;
+    } else {
+      next.push(cleanRow);
+    }
+    setPresets(next);
+    setPresetDraft({ label: '', mode: 'amount', value: '' });
+    setEditingPreset(null);
+    setCapDirty(true);
+  };
+
+  const editPreset = (idx: number) => {
+    const row = presets[idx];
+    if (!row) return;
+    setPresetDraft({
+      label: row.label,
+      mode: row.mode ?? 'amount',
+      value: String(row.value ?? 0),
+    });
+    setEditingPreset(idx);
+  };
+
+  const removePreset = (idx: number) => {
+    setPresets(presets.filter((_, i) => i !== idx));
+    if (editingPreset === idx) {
+      setPresetDraft({ label: '', mode: 'amount', value: '' });
+      setEditingPreset(null);
+    }
+    setCapDirty(true);
+  };
+
+  const cancelEdit = () => {
+    setPresetDraft({ label: '', mode: 'amount', value: '' });
+    setEditingPreset(null);
+  };
+
+  const setPresetMode = (mode: 'amount' | 'percent') => {
+    setPresetDraft({ ...presetDraft, mode });
+  };
+
+  // Save tax (only the rate — discount section saves separately)
   const saveTax = async () => {
+    const parsed = parseFloat(taxInput);
+    if (Number.isNaN(parsed) || parsed < 0 || parsed > 100) {
+      setToast({ msg: 'Tax rate must be between 0 and 100 percent.', severity: 'error' });
+      return;
+    }
     setSavingTax(true);
     try {
-      const next = await Settings.setTax(taxDraft);
+      const next = await Settings.setTax(parsed / 100);
       setSettings(next);
-      setTaxDraft(next.tax_rate);
+      setTaxInput((Number(next.tax_rate ?? 0) * 100).toFixed(2));
       setTaxDirty(false);
+      setToast({ msg: `Tax saved at ${parsed.toFixed(2)}%.`, severity: 'success' });
     } catch (e: any) {
-      setError(e?.response?.data?.detail ?? 'Failed to update tax');
+      setToast({ msg: e?.response?.data?.detail ?? 'Failed to update tax', severity: 'error' });
     } finally {
       setSavingTax(false);
     }
+  };
+
+  // Save discount section wholesale (cap + require_reason + presets)
+  const persistDiscount = async (
+    newPresets: DiscountPreset[],
+    newCapPct: number,
+    newRequireReason: boolean,
+  ): Promise<boolean> => {
+    if (Number.isNaN(newCapPct) || newCapPct < 0 || newCapPct > 100) {
+      setToast({ msg: 'Discount cap must be between 0 and 100 percent.', severity: 'error' });
+      return false;
+    }
+    if (newPresets.length > 8) {
+      setToast({ msg: 'Maximum 8 discount presets allowed.', severity: 'error' });
+      return false;
+    }
+    setSavingDiscount(true);
+    try {
+      const next: DiscountPolicy = await Discount.update({
+        presets: newPresets,
+        max_discount_pct: newCapPct / 100,
+        require_reason: newRequireReason,
+      });
+      setPresets(next.presets ?? []);
+      setCapInput((Number(next.max_discount_pct ?? 0) * 100).toFixed(2));
+      setCapDirty(false);
+      setToast({ msg: 'Discount policy saved.', severity: 'success' });
+      return true;
+    } catch (e: any) {
+      setToast({ msg: e?.response?.data?.detail ?? 'Failed to save discounts', severity: 'error' });
+      return false;
+    } finally {
+      setSavingDiscount(false);
+    }
+  };
+
+  const saveDiscounts = () => {
+    const capNum = parseFloat(capInput);
+    const requireReason = !!(settings as any)?.discount_policy?.require_reason;
+    persistDiscount(presets, capNum, requireReason);
   };
 
   if (loading && !settings) {
@@ -1014,7 +1214,6 @@ function TaxWorkspace({ color }: { color: string }) {
       </Box>
     );
   }
-
   if (!settings) {
     return (
       <Box sx={{ flex: 1, p: 3 }}>
@@ -1023,40 +1222,39 @@ function TaxWorkspace({ color }: { color: string }) {
     );
   }
 
+  const policy = (settings as any).discount_policy ?? {
+    max_discount_pct: 0.5,
+    presets: [],
+    require_reason: true,
+  };
+
   return (
-    <Box sx={{ flex: 1, overflowY: 'auto', p: 3 }}>
-      <ColumnHeader title="TAX" color={color} />
-
-      {error && (
-        <Alert severity="error" sx={{ mt: 2, borderRadius: 1 }} onClose={() => setError(null)}>
-          {error}
-        </Alert>
-      )}
-
-      <Paper sx={{ p: 2.5, borderRadius: `${SHAPE.card}px`, borderTop: '4px solid', borderTopColor: color, mt: 2 }}>
-        <Typography sx={{ fontWeight: 700, fontSize: '2.5rem', lineHeight: 1, color: 'text.primary', mb: 0.5 }}>
-          {(taxDraft * 100).toFixed(2)}%
-        </Typography>
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
-          Applied to every new order at checkout.
-        </Typography>
-
-        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 2 }}>
-          {[0, 5, 8, 10, 12.5, 15].map((pct) => (
-            <Chip
-              key={pct}
-              size="small"
-              label={`${pct}%`}
-              clickable
-              onClick={() => { setTaxDraft(pct / 100); setTaxDirty(true); }}
-              sx={{ borderRadius: `${SHAPE.chip}px`, fontWeight: 700 }}
-            />
-          ))}
+    <Box sx={{ flex: 1, overflowY: 'auto', p: 3, display: 'flex', flexDirection: 'column', gap: 2 }}>
+      {/* ───── TAX SECTION ───── */}
+      <Paper sx={{ p: 2.5, borderRadius: `${SHAPE.card}px`, borderTop: '4px solid', borderTopColor: color }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+          <PercentIcon sx={{ color }} />
+          <Typography sx={{ fontWeight: 700, fontSize: '1.05rem' }}>Tax</Typography>
         </Box>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Applied to every new order at checkout. Type any rate between 0 and 100
+          (interpreted as a percent of the bill subtotal). No presets — change it
+          only when you mean to.
+        </Typography>
 
-        <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+        <TextField
+          label="Tax rate (%)"
+          type="number"
+          size="small"
+          value={taxInput}
+          onChange={(e) => { setTaxInput(e.target.value); setTaxDirty(true); }}
+          inputProps={{ min: 0, max: 100, step: 0.01 }}
+          InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
+          sx={{ width: 220, mr: 1.5 }}
+        />
+        <Box sx={{ display: 'inline-flex', gap: 1, alignItems: 'center', ml: 0.5 }}>
           {taxDirty && (
-            <Button size="small" color="warning" onClick={() => { setTaxDraft(settings.tax_rate); setTaxDirty(false); }}>
+            <Button size="small" color="warning" onClick={() => { setTaxInput((Number(settings.tax_rate ?? 0) * 100).toFixed(2)); setTaxDirty(false); }}>
               Discard
             </Button>
           )}
@@ -1070,7 +1268,284 @@ function TaxWorkspace({ color }: { color: string }) {
             {savingTax ? 'Saving…' : 'Save tax'}
           </Button>
         </Box>
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
+          Preview: 10% on a $20 subtotal = <strong>$2.00</strong> tax.
+        </Typography>
       </Paper>
+
+      {/* ───── DISCOUNT PRESETS SECTION ───── */}
+      <Paper sx={{ p: 2.5, borderRadius: `${SHAPE.card}px`, borderTop: '4px solid', borderTopColor: color }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+          <LocalOfferIcon sx={{ color }} />
+          <Typography sx={{ fontWeight: 700, fontSize: '1.05rem' }}>Discount presets</Typography>
+          <Chip
+            size="small"
+            label={`${presets.length}/8`}
+            sx={{ ml: 1, borderRadius: `${SHAPE.chip}px`, bgcolor: 'surface.subtle', fontWeight: 700 }}
+          />
+        </Box>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Buttons the cashier can tap on a closed bill. Each preset stores a label
+          and a fixed dollar amount. The cashier can only apply presets you define
+          here (free-form discount amounts are reserved for admins and capped at
+          the percentage below).
+        </Typography>
+
+        {/* Cap + require-reason row */}
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center', mb: 2 }}>
+          <TextField
+            label="Max discount cap (%)"
+            type="number"
+            size="small"
+            value={capInput}
+            onChange={(e) => { setCapInput(e.target.value); setCapDirty(true); }}
+            inputProps={{ min: 0, max: 100, step: 1 }}
+            InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
+            sx={{ width: 220 }}
+            helperText="Of subtotal; above this amount only admins can apply."
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                checked={!!policy.require_reason}
+                onChange={async (e) => {
+                  const newPol: DiscountPolicy = await Discount.update({
+                    require_reason: e.target.checked,
+                  }).catch(() => policy);
+                  setSettings({ ...settings, discount_policy: newPol } as any);
+                  setToast({ msg: `Require-reason ${e.target.checked ? 'enabled' : 'disabled'}.`, severity: 'success' });
+                }}
+              />
+            }
+            label="Require reason when applying discount"
+            sx={{ ml: 1 }}
+          />
+        </Box>
+
+        {/* Preset list */}
+        {presets.length === 0 ? (
+          <Box
+            sx={{
+              border: '1px dashed',
+              borderColor: 'border.default',
+              borderRadius: `${SHAPE.card}px`,
+              p: 2,
+              textAlign: 'center',
+              color: 'text.secondary',
+              mb: 2,
+            }}
+          >
+            No presets yet — add one below to expose quick-pick buttons at checkout.
+          </Box>
+        ) : (
+          <Stack spacing={1} sx={{ mb: 2 }}>
+            {presets.map((p, idx) => {
+              const isEditing = editingPreset === idx;
+              const mode = (p.mode ?? 'amount') as 'amount' | 'percent';
+              const valueLabel =
+                mode === 'percent'
+                  ? `${Number(p.value ?? 0).toFixed(mode === 'percent' && Number.isInteger(p.value) ? 0 : 2)}%`
+                  : `$${Number(p.value ?? 0).toFixed(2)}`;
+              return (
+                <Box
+                  key={`${p.label}-${idx}`}
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1.5,
+                    p: 1.25,
+                    borderRadius: `${SHAPE.button}px`,
+                    border: '1px solid',
+                    borderColor: isEditing ? color : 'border.default',
+                    bgcolor: isEditing ? 'rgba(224, 123, 26, 0.06)' : 'surface.paper',
+                  }}
+                >
+                  <Chip
+                    size="small"
+                    icon={<LocalOfferIcon />}
+                    label={p.label}
+                    sx={{ borderRadius: `${SHAPE.chip}px`, fontWeight: 700, minWidth: 110 }}
+                  />
+                  <Chip
+                    size="small"
+                    label={mode === 'percent' ? '% off' : '$ off'}
+                    sx={{
+                      borderRadius: `${SHAPE.chip}px`,
+                      bgcolor: mode === 'percent' ? 'rgba(124, 58, 168, 0.12)' : 'rgba(43, 108, 255, 0.12)',
+                      color: mode === 'percent' ? '#7b3aa8' : '#2b6cff',
+                      fontWeight: 700,
+                    }}
+                  />
+                  <Typography sx={{ fontWeight: 700, color: color, fontSize: '1rem' }}>
+                    {valueLabel}
+                  </Typography>
+                  <Box sx={{ flex: 1 }} />
+                  {isEditing ? (
+                    <Button size="small" onClick={cancelEdit} sx={{ color: 'text.secondary' }}>
+                      Cancel
+                    </Button>
+                  ) : (
+                    <Button
+                      size="small"
+                      onClick={() => editPreset(idx)}
+                      sx={{
+                        minWidth: 40,
+                        bgcolor: 'rgba(43, 108, 255, 0.12)',
+                        color: '#2b6cff',
+                        '&:hover': { bgcolor: 'rgba(43, 108, 255, 0.2)' },
+                      }}
+                    >
+                      Edit
+                    </Button>
+                  )}
+                  <Button
+                    size="small"
+                    onClick={() => removePreset(idx)}
+                    sx={{
+                      minWidth: 40,
+                      bgcolor: 'rgba(216, 69, 60, 0.12)',
+                      color: '#d8453c',
+                      '&:hover': { bgcolor: 'rgba(216, 69, 60, 0.2)' },
+                    }}
+                  >
+                    Delete
+                  </Button>
+                </Box>
+              );
+            })}
+          </Stack>
+        )}
+
+        {/* Add / edit row */}
+        <Paper
+          variant="outlined"
+          sx={{
+            p: 1.5,
+            borderRadius: `${SHAPE.card}px`,
+            borderStyle: 'dashed',
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 1,
+            alignItems: 'center',
+          }}
+        >
+          <TextField
+            label="Label"
+            size="small"
+            value={presetDraft.label}
+            onChange={(e) => setPresetDraft({ ...presetDraft, label: e.target.value })}
+            inputProps={{ maxLength: 32 }}
+            sx={{ flex: '1 1 160px', minWidth: 140 }}
+            placeholder="VIP / Loyalty / Staff"
+          />
+          {/* M21.1 — mode toggle (Amount / Percent) + value input.
+              Pill pair keeps it tactile without a third dropdown. */}
+          <Box
+            role="group"
+            aria-label="Discount mode"
+            sx={{
+              display: 'inline-flex',
+              border: '1px solid',
+              borderColor: 'border.default',
+              borderRadius: `${SHAPE.chip}px`,
+              overflow: 'hidden',
+              height: 40,
+              alignSelf: 'center',
+            }}
+          >
+            {(['amount', 'percent'] as const).map((m) => {
+              const selected = presetDraft.mode === m;
+              return (
+                <Box
+                  key={m}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setPresetMode(m)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPresetMode(m); }
+                  }}
+                  sx={{
+                    px: 1.5,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    cursor: 'pointer',
+                    fontWeight: 700,
+                    fontSize: '0.85rem',
+                    bgcolor: selected ? color : 'surface.paper',
+                    color: selected ? 'common.white' : 'text.primary',
+                    '&:hover': selected ? {} : { bgcolor: 'surface.muted' },
+                  }}
+                >
+                  {m === 'amount' ? '$ Amount' : '% Percent'}
+                </Box>
+              );
+            })}
+          </Box>
+          <TextField
+            label={presetDraft.mode === 'percent' ? 'Value (%)' : 'Value ($)'}
+            type="number"
+            size="small"
+            value={presetDraft.value}
+            onChange={(e) => setPresetDraft({ ...presetDraft, value: e.target.value })}
+            inputProps={{
+              min: presetDraft.mode === 'percent' ? 0.5 : 0.01,
+              max: presetDraft.mode === 'percent' ? 100 : undefined,
+              step: presetDraft.mode === 'percent' ? 0.5 : 0.01,
+            }}
+            sx={{ width: presetDraft.mode === 'percent' ? 130 : 130 }}
+          />
+          <Button
+            size="small"
+            startIcon={<AddIcon />}
+            variant="outlined"
+            onClick={addOrUpdatePreset}
+            disabled={presets.length >= 8 && editingPreset === null}
+            sx={{
+              borderColor: color,
+              color,
+              '&:hover': { borderColor: color, bgcolor: `${color}11` },
+            }}
+          >
+            {editingPreset !== null ? 'Update preset' : 'Add preset'}
+          </Button>
+        </Paper>
+
+        {/* Save bar */}
+        <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end', mt: 2 }}>
+          {capDirty && (
+            <Button size="small" color="warning" onClick={() => { setCapInput((Number(policy.max_discount_pct ?? 0) * 100).toFixed(2)); setPresets(policy.presets ?? []); setCapDirty(false); }}>
+              Discard
+            </Button>
+          )}
+          <Button
+            size="small"
+            variant="contained"
+            disabled={!capDirty || savingDiscount}
+            onClick={saveDiscounts}
+            sx={{ bgcolor: color, '&:hover': { bgcolor: color, filter: 'brightness(0.9)' } }}
+          >
+            {savingDiscount ? 'Saving…' : 'Save discounts'}
+          </Button>
+        </Box>
+      </Paper>
+
+      <Snackbar
+        open={!!toast}
+        autoHideDuration={3500}
+        onClose={() => setToast(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        {toast ? (
+          <Alert
+            severity={toast.severity}
+            variant="filled"
+            onClose={() => setToast(null)}
+            sx={{ borderRadius: `${SHAPE.button}px` }}
+          >
+            {toast.msg}
+          </Alert>
+        ) : undefined}
+      </Snackbar>
     </Box>
   );
 }
@@ -1371,7 +1846,510 @@ function OpTile({
         sx={{ mt: 1, borderRadius: `${SHAPE.button}px`, minHeight: 32, fontWeight: 700, fontSize: '0.75rem', width: '100%', color: confirming ? 'common.white' : color, borderColor: color, bgcolor: confirming ? color : 'transparent' }}
       >
         {confirming ? 'Click to confirm' : 'Run'}
-      </Button>
-    </Paper>
+    </Button>
+  </Paper>
   );
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// PRINTER WORKSPACE — admin form for thermal-printer config
+//
+// Layout: two columns inside the workspace Paper.
+//   LEFT  — scrollable form (mode, network/usb, paper, header/footer
+//           line editors, auto_print toggles, dry_run)
+//   RIGHT — sticky "Test Print" card with the last PrintResult so the
+//           admin can immediately confirm a config change actually fires
+//
+// All fields are local-edits until Save; dirty flag drives the Save
+// button so admins can't accidentally PUT a no-op.
+// ─────────────────────────────────────────────────────────────────────
+function PrinterWorkspace({ color }: { color: string }) {
+  const [cfg, setCfg] = useState<PrinterConfig | null>(null);
+  const [draft, setDraft] = useState<PrinterConfig | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ msg: string; severity: 'success' | 'error' | 'info' } | null>(null);
+  const [lastTest, setLastTest] = useState<PrintResult | null>(null);
+
+  useEffect(() => {
+    Printer.get()
+      .then((c) => { setCfg(c); setDraft(c); })
+      .catch((e: any) => setError(e?.response?.data?.detail ?? e?.message ?? 'Failed to load printer config'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading || !draft) {
+    return (
+      <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <CircularProgress />
+     </Box>
+    );
+  }
+
+  const dirty = JSON.stringify(cfg) !== JSON.stringify(draft);
+
+  const update = (patch: Partial<PrinterConfig>) => setDraft((d) => (d ? { ...d, ...patch } : d));
+  const updatePaper = (patch: Partial<PrinterConfig['paper']>) =>
+    setDraft((d) => (d ? { ...d, paper: { ...d.paper, ...patch } } : d));
+  const updateAutoPrint = (patch: Partial<PrinterConfig['auto_print']>) =>
+    setDraft((d) => (d ? { ...d, auto_print: { ...d.auto_print, ...patch } } : d));
+  const updateNetwork = (patch: Partial<PrinterConfig['network']>) =>
+    setDraft((d) => (d ? { ...d, network: { ...d.network, ...patch } } : d));
+  const updateUsb = (patch: Partial<PrinterConfig['usb']>) =>
+    setDraft((d) => (d ? { ...d, usb: { ...d.usb, ...patch } } : d));
+
+  const setHeaderLine = (i: number, v: string) => {
+    const next = [...draft.paper.header_lines];
+    next[i] = v;
+    updatePaper({ header_lines: next });
+  };
+  const addHeaderLine = () => {
+    if (draft.paper.header_lines.length >= 5) return;
+    updatePaper({ header_lines: [...draft.paper.header_lines, ''] });
+  };
+  const removeHeaderLine = (i: number) => {
+    updatePaper({ header_lines: draft.paper.header_lines.filter((_, idx) => idx !== i) });
+  };
+  const setFooterLine = (i: number, v: string) => {
+    const next = [...draft.paper.footer_lines];
+    next[i] = v;
+    updatePaper({ footer_lines: next });
+  };
+  const addFooterLine = () => {
+    if (draft.paper.footer_lines.length >= 5) return;
+    updatePaper({ footer_lines: [...draft.paper.footer_lines, ''] });
+  };
+  const removeFooterLine = (i: number) => {
+    updatePaper({ footer_lines: draft.paper.footer_lines.filter((_, idx) => idx !== i) });
+  };
+
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const saved = await Printer.update(draft);
+      setCfg(saved);
+      setDraft(saved);
+      setToast({ msg: 'Printer settings saved', severity: 'success' });
+    } catch (e: any) {
+      const detail = e?.response?.data?.detail ?? e?.message ?? 'Save failed';
+      setToast({ msg: typeof detail === 'string' ? detail : JSON.stringify(detail), severity: 'error' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const reset = () => {
+    if (cfg) setDraft(cfg);
+  };
+
+  const testPrint = async () => {
+    setTesting(true);
+    try {
+      // If there are unsaved edits, push them first so Test Print reflects
+      // what the admin sees on screen.
+      if (dirty) {
+        const saved = await Printer.update(draft);
+        setCfg(saved);
+        setDraft(saved);
+      }
+      const res = await Printer.test();
+      setLastTest(res);
+      setToast({
+        msg: res.ok
+          ? `Test print fired · ${res.bytes_written} bytes · ${res.elapsed_ms} ms`
+          : `Test print failed · ${res.error ?? 'unknown error'}`,
+        severity: res.ok ? 'success' : 'error',
+      });
+    } catch (e: any) {
+      const detail = e?.response?.data?.detail ?? e?.message ?? 'Test print request failed';
+      setToast({ msg: typeof detail === 'string' ? detail : JSON.stringify(detail), severity: 'error' });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  return (
+    <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+      {/* ── LEFT: scrollable form ───────────────────────────────────── */}
+      <Box sx={{ flex: 1, overflowY: 'auto', p: 3, display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+        {error && (
+          <Alert severity="error" onClose={() => setError(null)} sx={{ borderRadius: `${SHAPE.card}px` }}>
+            {error}
+         </Alert>
+        )}
+
+        {/* MODE */}
+        <Section title="Mode" color={color}>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+            {([
+              { v: 'dummy', label: 'Dummy', icon: <PrintOutlinedIcon />, hint: 'Throw away · for dev' },
+              { v: 'network', label: 'Network', icon: <RouterIcon />, hint: 'IP:port over LAN' },
+              { v: 'usb', label: 'USB', icon: <UsbIcon />, hint: 'Direct-attached' },
+            ] as const).map((opt) => {
+              const selected = draft.mode === opt.v;
+              return (
+                <Box
+                  key={opt.v}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => update({ mode: opt.v })}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') update({ mode: opt.v }); }}
+                  sx={{
+                    flex: '1 1 160px',
+                    minHeight: 64,
+                    p: 1.5,
+                    borderRadius: `${SHAPE.card}px`,
+                    border: '2px solid',
+                    borderColor: selected ? color : 'border.default',
+                    bgcolor: selected ? `${color}10` : 'surface.paper',
+                    cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: 1.25,
+                    transition: 'border-color 0.1s, background-color 0.1s',
+                    '&:hover': { bgcolor: selected ? `${color}18` : 'surface.muted' },
+                    '&:focus-visible': { outline: `2px solid ${color}`, outlineOffset: 2 },
+                  }}
+                >
+                  <Box sx={{ color: selected ? color : 'text.secondary', display: 'flex' }}>{opt.icon}</Box>
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography sx={{ fontWeight: 700, color: selected ? color : 'text.primary' }}>{opt.label}</Typography>
+                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>{opt.hint}</Typography>
+                 </Box>
+               </Box>
+              );
+            })}
+         </Box>
+       </Section>
+
+        {/* NETWORK target (only when mode=network) */}
+        {draft.mode === 'network' && (
+          <Section title="Network target" color={color}>
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth size="small" label="Host" placeholder="192.168.1.50"
+                  value={draft.network.host}
+                  onChange={(e) => updateNetwork({ host: e.target.value })}
+                  InputProps={{ startAdornment: <InputAdornment position="start"><NetworkCheckIcon sx={{ fontSize: 18 }} /></InputAdornment> }}
+                />
+             </Grid>
+              <Grid item xs={6} sm={3}>
+                <TextField
+                  fullWidth size="small" label="Port" type="number"
+                  value={draft.network.port}
+                  onChange={(e) => updateNetwork({ port: parseInt(e.target.value || '0', 10) || 0 })}
+                />
+             </Grid>
+              <Grid item xs={6} sm={3}>
+                <TextField
+                  fullWidth size="small" label="Timeout (s)" type="number"
+                  value={draft.network.timeout_sec}
+                  onChange={(e) => updateNetwork({ timeout_sec: parseFloat(e.target.value || '0') || 0 })}
+                />
+             </Grid>
+           </Grid>
+         </Section>
+        )}
+
+        {/* USB target (only when mode=usb) */}
+        {draft.mode === 'usb' && (
+          <Section title="USB device" color={color}>
+            <Grid container spacing={2}>
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth size="small" label="Vendor ID (hex)" placeholder="0x04b8"
+                  value={draft.usb.vendor_id}
+                  onChange={(e) => {
+                    const n = parseInt(e.target.value.replace(/^0x/i, ''), 16);
+                    updateUsb({ vendor_id: isNaN(n) ? 0 : n });
+                  }}
+                />
+             </Grid>
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth size="small" label="Product ID (hex)" placeholder="0x0202"
+                  value={draft.usb.product_id}
+                  onChange={(e) => {
+                    const n = parseInt(e.target.value.replace(/^0x/i, ''), 16);
+                    updateUsb({ product_id: isNaN(n) ? 0 : n });
+                  }}
+                />
+             </Grid>
+           </Grid>
+         </Section>
+        )}
+
+        {/* PAPER */}
+        <Section title="Paper" color={color}>
+          <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+            {([58, 80] as const).map((w) => {
+              const selected = draft.paper.width_mm === w;
+              return (
+                <Box
+                  key={w}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => updatePaper({ width_mm: w })}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') updatePaper({ width_mm: w }); }}
+                  sx={{
+                    flex: 1, minHeight: 48,
+                    p: 1.25, borderRadius: `${SHAPE.button}px`,
+                    border: '2px solid',
+                    borderColor: selected ? color : 'border.default',
+                    bgcolor: selected ? `${color}10` : 'surface.paper',
+                    cursor: 'pointer', fontWeight: 700,
+                    textAlign: 'center',
+                    color: selected ? color : 'text.primary',
+                    '&:focus-visible': { outline: `2px solid ${color}`, outlineOffset: 2 },
+                  }}
+                >
+                  {w} mm
+               </Box>
+              );
+            })}
+         </Box>
+
+          {/* Header lines */}
+          <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', display: 'block', mb: 0.5 }}>
+            HEADER LINES (max 5)
+         </Typography>
+          <Stack spacing={1} sx={{ mb: 2 }}>
+            {draft.paper.header_lines.map((line, i) => (
+              <Box key={i} sx={{ display: 'flex', gap: 1 }}>
+                <TextField
+                  fullWidth size="small" placeholder={`Line ${i + 1}`}
+                  value={line}
+                  onChange={(e) => setHeaderLine(i, e.target.value)}
+                />
+                <Button
+                  size="small" color="error" variant="outlined"
+                  onClick={() => removeHeaderLine(i)}
+                  sx={{ minWidth: 44, borderRadius: `${SHAPE.button}px` }}
+                >
+                  <DeleteOutlineIcon fontSize="small" />
+               </Button>
+             </Box>
+            ))}
+            <Button
+              size="small" variant="outlined" startIcon={<AddIcon />}
+              onClick={addHeaderLine}
+              disabled={draft.paper.header_lines.length >= 5}
+              sx={{ alignSelf: 'flex-start', borderRadius: `${SHAPE.button}px`, borderColor: color, color }}
+            >
+              Add header line
+           </Button>
+         </Stack>
+
+          {/* Footer lines */}
+          <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', display: 'block', mb: 0.5 }}>
+            FOOTER LINES (max 5)
+         </Typography>
+          <Stack spacing={1} sx={{ mb: 1.5 }}>
+            {draft.paper.footer_lines.map((line, i) => (
+              <Box key={i} sx={{ display: 'flex', gap: 1 }}>
+                <TextField
+                  fullWidth size="small" placeholder={`Line ${i + 1}`}
+                  value={line}
+                  onChange={(e) => setFooterLine(i, e.target.value)}
+                />
+                <Button
+                  size="small" color="error" variant="outlined"
+                  onClick={() => removeFooterLine(i)}
+                  sx={{ minWidth: 44, borderRadius: `${SHAPE.button}px` }}
+                >
+                  <DeleteOutlineIcon fontSize="small" />
+               </Button>
+             </Box>
+            ))}
+            <Button
+              size="small" variant="outlined" startIcon={<AddIcon />}
+              onClick={addFooterLine}
+              disabled={draft.paper.footer_lines.length >= 5}
+              sx={{ alignSelf: 'flex-start', borderRadius: `${SHAPE.button}px`, borderColor: color, color }}
+            >
+              Add footer line
+           </Button>
+         </Stack>
+
+          <FormControlLabel
+            control={
+              <Switch
+                checked={draft.paper.cut_paper}
+                onChange={(e) => updatePaper({ cut_paper: e.target.checked })}
+                color="primary"
+              />
+            }
+            label={<Typography sx={{ fontWeight: 600 }}>Auto-cut paper at end (GS V 0</Typography>}
+          />
+       </Section>
+
+        {/* AUTO-PRINT */}
+        <Section title="Automatic printing" color={color}>
+          <Stack spacing={0.5}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={draft.auto_print.on_send_to_kitchen}
+                  onChange={(e) => updateAutoPrint({ on_send_to_kitchen: e.target.checked })}
+                  color="primary"
+                />
+              }
+              label={<Typography sx={{ fontWeight: 600 }}>Print kitchen ticket on checkout</Typography>}
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={draft.auto_print.on_payment}
+                  onChange={(e) => updateAutoPrint({ on_payment: e.target.checked })}
+                  color="primary"
+                />
+              }
+              label={<Typography sx={{ fontWeight: 600 }}>Print customer receipt on payment</Typography>}
+            />
+         </Stack>
+       </Section>
+
+        {/* DRY-RUN */}
+        <Section title="Diagnostics" color={color}>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={draft.dry_run}
+                onChange={(e) => update({ dry_run: e.target.checked })}
+                color="warning"
+              />
+            }
+            label={
+              <Box>
+                <Typography sx={{ fontWeight: 700 }}>Dry-run mode</Typography>
+                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                  Build bytes but don't send to the printer. Logs each ticket as `[dry-run]`.
+               </Typography>
+             </Box>
+            }
+          />
+       </Section>
+
+        {/* Save / Reset */}
+        <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end', pt: 1 }}>
+          <Button
+            variant="outlined"
+            onClick={reset}
+            disabled={!dirty || saving}
+            sx={{ borderRadius: `${SHAPE.button}px`, fontWeight: 700 }}
+          >
+            Discard changes
+         </Button>
+          <Button
+            variant="contained"
+            onClick={save}
+            disabled={!dirty || saving}
+            sx={{
+              bgcolor: color, borderRadius: `${SHAPE.button}px`, fontWeight: 700,
+              '&:hover': { bgcolor: color, filter: 'brightness(0.92)' },
+            }}
+          >
+            {saving ? 'Saving…' : 'Save settings'}
+         </Button>
+       </Box>
+     </Box>
+
+      <Divider orientation="vertical" flexItem />
+
+      {/* ── RIGHT: Test Print card (sticky) ─────────────────────────── */}
+      <Box
+        sx={{
+          width: 340, minWidth: 280, flexShrink: 0,
+          display: 'flex', flexDirection: 'column',
+          borderLeft: '1px solid', borderColor: 'border.default',
+          bgcolor: 'surface.paper',
+        }}
+      >
+        <ColumnHeader title="TEST PRINT" color={color} />
+        <Box sx={{ flex: 1, p: 2.5, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+            Fires a tiny test ticket through the configured sender and returns the
+            raw <code>PrintResult</code>. Use this to verify reachability before a
+            real checkout — the backend always replies with bytes_written even in
+            dummy / dry_run modes.
+         </Typography>
+
+          <Button
+            variant="contained"
+            size="large"
+            startIcon={testing ? <CircularProgress size={16} sx={{ color: 'common.white' }} /> : <PrintIcon />}
+            onClick={testPrint}
+            disabled={testing || saving}
+            sx={{
+              bgcolor: color, fontWeight: 800,
+              borderRadius: `${SHAPE.button}px`, minHeight: 56,
+              '&:hover': { bgcolor: color, filter: 'brightness(0.92)' },
+            }}
+          >
+            {testing ? 'Printing…' : 'Run Test Print'}
+         </Button>
+
+          {lastTest && (
+            <Paper sx={{ p: 2, borderRadius: `${SHAPE.card}px`, border: '1px solid', borderColor: lastTest.ok ? 'success.main' : 'error.main' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                {lastTest.ok
+                  ? <CheckCircleIcon sx={{ color: 'success.main' }} />
+                  : <WarningIcon sx={{ color: 'error.main' }} />}
+                <Typography sx={{ fontWeight: 800, color: lastTest.ok ? 'success.main' : 'error.main' }}>
+                  {lastTest.ok ? 'Last print OK' : 'Last print FAILED'}
+               </Typography>
+             </Box>
+              <Box sx={{ display: 'grid', gridTemplateColumns: 'auto 1fr', rowGap: 0.5, columnGap: 1.5, fontFamily: 'monospace', fontSize: '0.85rem' }}>
+                <Typography sx={{ color: 'text.secondary' }}>mode</Typography><Typography>{lastTest.mode}</Typography>
+                <Typography sx={{ color: 'text.secondary' }}>dry_run</Typography><Typography>{String(lastTest.dry_run)}</Typography>
+                <Typography sx={{ color: 'text.secondary' }}>bytes</Typography><Typography>{lastTest.bytes_written}</Typography>
+                <Typography sx={{ color: 'text.secondary' }}>elapsed</Typography><Typography>{lastTest.elapsed_ms} ms</Typography>
+                {lastTest.error && (<><Typography sx={{ color: 'error.main' }}>error</Typography><Typography sx={{ color: 'error.main', wordBreak: 'break-word' }}>{lastTest.error}</Typography></>)}
+             </Box>
+           </Paper>
+          )}
+       </Box>
+     </Box>
+
+      {/* Toast */}
+      <Snackbar
+        open={!!toast}
+        autoHideDuration={4000}
+        onClose={() => setToast(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        {toast ? (
+          <Alert
+            severity={toast.severity}
+            variant="filled"
+            onClose={() => setToast(null)}
+            sx={{ borderRadius: `${SHAPE.button}px` }}
+          >
+            {toast.msg}
+         </Alert>
+        ) : undefined}
+      </Snackbar>
+   </Box>
+  );
+}
+
+// ── Section — small labelled card wrapper for the printer form ────────
+function Section({ title, color, children }: { title: string; color: string; children: React.ReactNode }) {
+  return (
+    <Paper
+      sx={{
+        p: 2, borderRadius: `${SHAPE.card}px`,
+        border: '1px solid', borderColor: 'border.default',
+      }}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+        <Box sx={{ width: 4, height: 16, bgcolor: color, borderRadius: '2px' }} />
+        <Typography sx={{ fontWeight: 700, fontSize: '0.95rem' }}>{title}</Typography>
+     </Box>
+      {children}
+   </Paper>
+  );
+}
+

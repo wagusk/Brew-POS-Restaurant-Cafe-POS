@@ -137,6 +137,8 @@ class OrderOut(BaseModel):
     customer_name: str
     notes: str
     subtotal: float
+    discount: float = 0.0
+    discount_reason: str = ""
     tax: float
     total: float
     created_at: datetime
@@ -154,6 +156,17 @@ class OrderStatusIn(BaseModel):
 class CloseOrderIn(BaseModel):
     payment_method: str = "cash"  # cash | card | mobile
     tendered: float = 0.0
+    # M21 — optional discount applied by the cashier at checkout.
+    # Backward compatible: existing callers who send discount +
+    # discount_reason keep working (free-form dollar discount,
+    # admins only). New `preset_label` resolves to the matching
+    # configured preset on the cashier side; the cashier converts
+    # percent presets into a resolved dollar amount via the policy
+    # API before sending. Discount reduces the taxable base so tax
+    # is charged on the discounted amount (subtotal - discount + tax).
+    discount: float = 0.0
+    discount_reason: str = ""
+    preset_label: str | None = None  # resolved server-side from policy
 
 
 class CancelOrderIn(BaseModel):

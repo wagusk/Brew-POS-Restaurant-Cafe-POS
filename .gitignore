@@ -31,3 +31,7 @@ Thumbs.db
 
 # Local progress log — kept on disk, never pushed
 PROGRESS.md
+
+# Hermes scan artifacts (local-only, never pushed)
+BUG-REPORT-*.md
+docs/AUDIT.md

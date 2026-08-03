@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Box, Paper, Typography, Button, Chip, Dialog, DialogTitle, DialogContent,
-  DialogActions, Divider, Alert, Snackbar,
+  DialogActions, Divider, Alert, Snackbar, IconButton, Tooltip, CircularProgress,
 } from '@mui/material';
 import TableRestaurantIcon from '@mui/icons-material/TableRestaurant';
 import CreditCardIcon from '@mui/icons-material/CreditCard';
@@ -12,8 +12,11 @@ import CancelIcon from '@mui/icons-material/Cancel';
 import BackspaceIcon from '@mui/icons-material/Backspace';
 import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
 import HomeWorkIcon from '@mui/icons-material/HomeWork';
+import PrintOutlinedIcon from '@mui/icons-material/PrintOutlined';
+import LocalOfferIcon from '@mui/icons-material/LocalOffer';
+import PercentIcon from '@mui/icons-material/Percent';
 import { useAppSelector } from '../store/hooks';
-import { Orders } from '../lib/api';
+import { Orders, Discount, resolvePresetDiscount, type DiscountPolicy, type DiscountPreset } from '../lib/api';
 import { ws } from '../lib/ws';
 import type { Order, Table } from '../types';
 
@@ -41,7 +44,7 @@ export default function CashierPage() {
   const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
   // `paying` → payment dialog open with this bill
   const [paying, setPaying] = useState<Order | null>(null);
-  const [snack, setSnack] = useState<string | null>(null);
+  const [snack, setSnack] = useState<{ msg: string; severity: 'success' | 'error' | 'info' } | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const reload = () => {
@@ -317,7 +320,7 @@ export default function CashierPage() {
                 </Box>
               </Box>
             ) : (
-              <BillPanel bill={selectedBill} tableName={tables.find((t: Table) => t.id === selectedBill.table_id)?.name} />
+              <BillPanel bill={selectedBill} tableName={tables.find((t: Table) => t.id === selectedBill.table_id)?.name} onReprint={(msg, severity) => setSnack({ msg, severity })} />
             )}
           </Box>
           {/* Pay button — sticky below the bill panel so the cashier can
@@ -360,11 +363,26 @@ export default function CashierPage() {
         open={!!paying}
         submitting={submitting}
         onCancel={() => { if (!submitting) setPaying(null); }}
-        onConfirm={async (method, tendered) => {
+        onConfirm={async (method, tendered, appliedDiscount) => {
           if (!paying) return;
           setSubmitting(true);
+          // Build payload — preset path takes priority over free-form.
+          // Server-side `preset_label` resolves the dollar amount (and
+          // applies percent presets against the bill subtotal) so the
+          // cashier can't tamper with the cap.
+          const payload: {
+            payment_method: string;
+            tendered: number;
+            preset_label?: string;
+            discount?: number;
+            discount_reason?: string;
+          } = { payment_method: method, tendered };
+          if (appliedDiscount) {
+            payload.preset_label = appliedDiscount.label;
+            payload.discount_reason = appliedDiscount.label;
+          }
           try {
-            await Orders.close(paying.id, { payment_method: method, tendered });
+            await Orders.close(paying.id, payload);
             setPaying(null);
             reload();
           } catch (e: any) {
@@ -374,7 +392,7 @@ export default function CashierPage() {
                 : e?.response?.data?.detail) ??
               e?.message ??
               'Failed to close the bill';
-            setSnack(typeof detail === 'string' ? detail : JSON.stringify(detail));
+            setSnack({ msg: typeof detail === 'string' ? detail : JSON.stringify(detail), severity: 'error' });
           } finally {
             setSubmitting(false);
           }
@@ -388,23 +406,39 @@ export default function CashierPage() {
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
         <Alert
-          severity="error"
+          severity={snack?.severity ?? 'error'}
           variant="filled"
           onClose={() => setSnack(null)}
           sx={{ borderRadius: `${SHAPE.button}px` }}
         >
-          {snack}
-        </Alert>
-      </Snackbar>
+          {snack?.msg ?? ''}
+       </Alert>
+     </Snackbar>
     </Box>
   );
 }
 
 // Permanent bill panel — the right column of the cashier. Shows the
 // selected table's bill with a sticky Pay button below.
-function BillPanel({ bill, tableName }: { bill: Order; tableName?: string }) {
+function BillPanel({ bill, tableName, onReprint }: { bill: Order; tableName?: string; onReprint?: (msg: string, severity: 'success' | 'error') => void }) {
   const accent =
     bill.status === 'served' || bill.status === 'ready' ? '#2b6cff' : 'role.cashier';
+  const [reprinting, setReprinting] = useState(false);
+  const handleReprint = async () => {
+    setReprinting(true);
+    try {
+      const res = await Orders.printReceipt(bill.id);
+      onReprint?.(res.ok
+        ? `Receipt reprinted · ${res.bytes_written} bytes`
+        : `Receipt failed · ${res.error ?? 'unknown error'}`,
+        res.ok ? 'success' : 'error');
+    } catch (e: any) {
+      const detail = e?.response?.data?.detail ?? e?.message ?? 'Reprint request failed';
+      onReprint?.(typeof detail === 'string' ? detail : JSON.stringify(detail), 'error');
+    } finally {
+      setReprinting(false);
+    }
+  };
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -416,16 +450,37 @@ function BillPanel({ bill, tableName }: { bill: Order; tableName?: string }) {
           }}
         >
           <Typography sx={{ fontWeight: 800, fontSize: '1rem' }}>#{bill.number}</Typography>
-        </Box>
+       </Box>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 800, lineHeight: 1.1 }}>
             Bill #{bill.number}
-          </Typography>
+         </Typography>
           <Typography variant="caption" color="text.secondary">
             {tableName ? `${tableName} · ` : ''}{bill.status.toUpperCase()}
-          </Typography>
-        </Box>
-      </Box>
+         </Typography>
+       </Box>
+        {/* Reprint receipt — only when bill is paid (backend guard) */}
+        {bill.status === 'paid' && (
+          <Tooltip title="Reprint customer receipt">
+            <span>
+              <IconButton
+                size="small"
+                color="primary"
+                disabled={reprinting}
+                onClick={handleReprint}
+                sx={{
+                  borderRadius: `${SHAPE.button}px`,
+                  border: '1px solid', borderColor: 'primary.main',
+                  bgcolor: 'primary.main', color: 'common.white',
+                  '&:hover': { bgcolor: 'primary.main', filter: 'brightness(0.92)' },
+                }}
+              >
+                {reprinting ? <CircularProgress size={16} sx={{ color: 'common.white' }} /> : <PrintOutlinedIcon fontSize="small" />}
+             </IconButton>
+           </span>
+         </Tooltip>
+        )}
+     </Box>
       <Divider />
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
         {bill.items.map((it) => (
@@ -475,6 +530,24 @@ function BillPanel({ bill, tableName }: { bill: Order; tableName?: string }) {
         ))}
       </Box>
       <Divider />
+      {bill.discount > 0 && (
+        <Box>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+            <Typography variant="body2" color="text.secondary">Subtotal</Typography>
+            <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>${bill.subtotal.toFixed(2)}</Typography>
+          </Box>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+            <Typography variant="body2" color="text.secondary">Discount{bill.discount_reason ? ` · ${bill.discount_reason}` : ''}</Typography>
+            <Typography variant="body2" sx={{ fontFamily: 'monospace', color: '#e07b1a', fontWeight: 700 }}>
+              −${bill.discount.toFixed(2)}
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+            <Typography variant="body2" color="text.secondary">Tax</Typography>
+            <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>${bill.tax.toFixed(2)}</Typography>
+          </Box>
+        </Box>
+      )}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography sx={{ fontWeight: 700 }}>Total</Typography>
         <Typography sx={{ fontWeight: 800, color: accent, fontSize: '1.4rem', fontFamily: 'monospace' }}>
@@ -492,17 +565,26 @@ function PaymentDialog({
   open: boolean;
   submitting: boolean;
   onCancel: () => void;
-  onConfirm: (method: PaymentMethod, tendered: number) => void;
+  onConfirm: (method: PaymentMethod, tendered: number, appliedDiscount: { label: string; amount: number } | null) => void;
 }) {
   const [method, setMethod] = useState<PaymentMethod>('cash');
   const [tendered, setTendered] = useState('0');
   const [error, setError] = useState<string | null>(null);
+  // M21.1 — load admin-configured discount policy on open so the
+  // preset row renders live values. `appliedPreset` is the cashier's
+  // currently-selected preset; null means no discount applied. We
+  // commit the *preset label*, not the dollar amount, so the server
+  // resolves percent presets against the persisted subtotal.
+  const [policy, setPolicy] = useState<DiscountPolicy | null>(null);
+  const [appliedPreset, setAppliedPreset] = useState<{ label: string; amount: number } | null>(null);
 
   useEffect(() => {
-    if (open) {
+    if (open && bill) {
       setTendered('0');
       setMethod('cash');
       setError(null);
+      setAppliedPreset(null);
+      Discount.get().then(setPolicy).catch(() => setPolicy(null));
     }
   }, [open, bill?.id]);
 
@@ -514,10 +596,26 @@ function PaymentDialog({
     );
   }
 
+  // Live recompute using subtotal - discount + tax. Mirrors the
+  // backend `close_order` formula. Tax rate is derived from the
+  // current `bill.tax` snapshot (it's the tax the order currently
+  // carries, computed against subtotal at order/submit time).
+  const subtotal = bill.subtotal ?? 0;
+  const presets = policy?.presets ?? [];
+  const taxRate = subtotal > 0 && bill.tax != null
+    ? (bill.tax / subtotal)
+    : 0.10;
+  const discountAmount = appliedPreset?.amount ?? 0;
+  const taxable = Math.max(0, subtotal - discountAmount);
+  const tax = +(taxable * taxRate).toFixed(2);
+  // total recomputed = taxable + tax (when discount applied) or
+  // original total when no discount.
+  const recomputedTotal = +(taxable + tax).toFixed(2);
+
   const tenderedNum = parseFloat(tendered) || 0;
   const isCash = method === 'cash';
-  const change = isCash ? tenderedNum - bill.total : 0;
-  const canPay = !isCash || tenderedNum >= bill.total - 0.005;
+  const change = isCash ? tenderedNum - recomputedTotal : 0;
+  const canPay = !isCash || tenderedNum >= recomputedTotal - 0.005;
 
   const tap = (key: string) => {
     setTendered((cur) => {
@@ -537,11 +635,23 @@ function PaymentDialog({
   };
   const back = () => setTendered((cur) => (cur.length > 1 ? cur.slice(0, -1) : '0'));
   const clearAll = () => setTendered('0');
-  const exact = () => setTendered(bill.total.toFixed(2));
+  // "Exact" fills the tendered input with the recomputed total
+  // (which already accounts for the applied discount).
+  const exact = () => setTendered(recomputedTotal.toFixed(2));
   const addQuick = (n: number) => setTendered((cur) => {
     const next = (parseFloat(cur === '0' ? '0' : cur) || 0) + n;
     return next.toFixed(2);
   });
+
+  // Tap preset → resolve live dollar amount, toggle re-tap clears.
+  const tapPreset = (p: DiscountPreset) => {
+    const amount = resolvePresetDiscount(p, subtotal);
+    if (appliedPreset?.label === p.label) {
+      setAppliedPreset(null);
+      return;
+    }
+    setAppliedPreset({ label: p.label, amount });
+  };
 
   const handleConfirm = () => {
     if (!canPay) {
@@ -549,7 +659,7 @@ function PaymentDialog({
       return;
     }
     setError(null);
-    onConfirm(method, isCash ? tenderedNum : bill.total);
+    onConfirm(method, isCash ? tenderedNum : recomputedTotal, appliedPreset);
   };
 
   return (
@@ -569,12 +679,108 @@ function PaymentDialog({
       <DialogTitle sx={{ fontWeight: 800 }}>
         Pay Bill #{bill.number}
         <Typography variant="caption" color="text.secondary" component="div" sx={{ mt: 0.25 }}>
-          ${bill.total.toFixed(2)} due · {bill.items.length} item{bill.items.length === 1 ? '' : 's'}
+          ${recomputedTotal.toFixed(2)} due{bill.items.length ? ` · ${bill.items.length} item${bill.items.length === 1 ? '' : 's'}` : ''}
         </Typography>
       </DialogTitle>
       <DialogContent dividers>
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
           <Box>
+            {/* ───── M21.1 — Discount preset row ─────
+                Sits above the Method label so the cashier sees
+                discount options before they pick a tendering method.
+                Each tile shows: label + mode badge + the live dollar
+                amount this preset would shave off *this* bill (server
+                resolves percent presets against subtotal). Re-tap
+                clears the selection. */}
+            {presets.length > 0 && (
+              <>
+                <Typography variant="overline" sx={{ fontWeight: 700, color: 'text.secondary', display: 'block', mb: 1, letterSpacing: 0.5 }}>
+                  Discount
+                </Typography>
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))',
+                    gap: 1,
+                    mb: 2,
+                  }}
+                >
+                  {presets.map((p, idx) => {
+                    const liveAmount = resolvePresetDiscount(p, subtotal);
+                    const isSel = appliedPreset?.label === p.label;
+                    const isPercent = (p.mode ?? 'amount') === 'percent';
+                    return (
+                      <Box
+                        key={`${p.label}-${idx}`}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => tapPreset(p)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tapPreset(p); }
+                        }}
+                        sx={{
+                          borderRadius: `${SHAPE.button}px`,
+                          border: '2px solid',
+                          borderColor: isSel ? '#e07b1a' : 'border.default',
+                          bgcolor: isSel ? 'rgba(224, 123, 26, 0.10)' : 'surface.paper',
+                          p: 1,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          gap: 0.25,
+                          minHeight: 64,
+                          transition: 'all 0.12s',
+                          '&:hover': { borderColor: '#e07b1a' },
+                          '&:active': { transform: 'scale(0.97)' },
+                        }}
+                      >
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <LocalOfferIcon sx={{ fontSize: 14, color: isSel ? '#e07b1a' : 'text.secondary' }} />
+                          <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', color: 'text.primary', textAlign: 'center', lineHeight: 1.1 }}>
+                            {p.label}
+                          </Typography>
+                        </Box>
+                        <Typography sx={{ fontWeight: 800, fontSize: '0.95rem', color: '#e07b1a' }}>
+                          −${liveAmount.toFixed(2)}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.65rem' }}>
+                          {isPercent ? `${Number(p.value ?? 0).toFixed(p.value === Math.floor(p.value) ? 0 : 1)}% off subtotal` : 'fixed off'}
+                        </Typography>
+                      </Box>
+                    );
+                  })}
+                </Box>
+                {appliedPreset && (
+                  <Paper
+                    sx={{
+                      p: 1.25,
+                      mb: 2,
+                      borderRadius: `${SHAPE.button}px`,
+                      bgcolor: 'rgba(224, 123, 26, 0.08)',
+                      border: '1px solid #e07b1a',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1.5,
+                    }}
+                  >
+                    <PercentIcon sx={{ color: '#e07b1a', fontSize: 18 }} />
+                    <Box sx={{ flex: 1 }}>
+                      <Typography sx={{ fontWeight: 700, fontSize: '0.85rem' }}>
+                        {appliedPreset.label} applied
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Subtotal ${subtotal.toFixed(2)} − ${appliedPreset.amount.toFixed(2)} = ${taxable.toFixed(2)} taxable · Tax ${tax.toFixed(2)} · Total ${recomputedTotal.toFixed(2)}
+                      </Typography>
+                    </Box>
+                    <Button size="small" color="warning" onClick={() => setAppliedPreset(null)} sx={{ minHeight: 32 }}>
+                      Clear
+                    </Button>
+                  </Paper>
+                )}
+              </>
+            )}
+
             <Typography variant="overline" sx={{ fontWeight: 700, color: 'text.secondary', display: 'block', mb: 1, letterSpacing: 0.5 }}>
               Method
             </Typography>
@@ -652,7 +858,7 @@ function PaymentDialog({
                 </Box>
                 <Box sx={{ display: 'flex', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
                   <Button size="small" variant="outlined" onClick={exact} sx={{ borderRadius: `${SHAPE.button}px`, minHeight: 40, fontWeight: 600 }}>
-                    Exact ${bill.total.toFixed(2)}
+                    Exact ${recomputedTotal.toFixed(2)}
                   </Button>
                   <Button size="small" variant="outlined" onClick={() => addQuick(5)} sx={{ borderRadius: `${SHAPE.button}px`, minHeight: 40 }}>+$5</Button>
                   <Button size="small" variant="outlined" onClick={() => addQuick(10)} sx={{ borderRadius: `${SHAPE.button}px`, minHeight: 40 }}>+$10</Button>
@@ -679,10 +885,12 @@ function PaymentDialog({
                 }}
               >
                 <Typography variant="subtitle1" sx={{ fontWeight: 700, color: METHOD_TOKENS[method].color }}>
-                  Charge ${bill.total.toFixed(2)} via {METHOD_TOKENS[method].label}
+                  Charge ${recomputedTotal.toFixed(2)} via {METHOD_TOKENS[method].label}
                 </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Tap Confirm to charge the customer's {METHOD_TOKENS[method].label.toLowerCase()}.
+                <Typography variant="caption" color="text.secondary" component="div" sx={{ mt: 0.5 }}>
+                  {appliedPreset
+                    ? `Subtotal $${subtotal.toFixed(2)} − ${appliedPreset.label} $${appliedPreset.amount.toFixed(2)} = $${taxable.toFixed(2)} taxable · Tax $${tax.toFixed(2)}`
+                    : `Tap Confirm to charge the customer's ${METHOD_TOKENS[method].label.toLowerCase()}.`}
                 </Typography>
               </Paper>
             )}
@@ -758,7 +966,7 @@ function PaymentDialog({
             fontSize: '1.05rem',
           }}
         >
-          {submitting ? 'Processing…' : `Confirm Pay $${bill.total.toFixed(2)}`}
+          {submitting ? 'Processing…' : `Confirm Pay $${recomputedTotal.toFixed(2)}`}
         </Button>
       </DialogActions>
     </Dialog>

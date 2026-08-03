@@ -102,6 +102,12 @@ class Order(Base):
     customer_name: Mapped[str] = mapped_column(String(80), default="")
     notes: Mapped[str] = mapped_column(Text, default="")
     subtotal: Mapped[float] = mapped_column(Float, default=0.0)
+    # M21 — discount applied at checkout. `discount` is the dollar amount
+    # (always positive). `discount_reason` is free-form text from the
+    # cashier explaining why (e.g. "VIP customer", "loyalty"). `discount`
+    # reduces the taxable base so tax is charged on the discounted amount.
+    discount: Mapped[float] = mapped_column(Float, default=0.0)
+    discount_reason: Mapped[str] = mapped_column(String(120), default="")
     tax: Mapped[float] = mapped_column(Float, default=0.0)
     total: Mapped[float] = mapped_column(Float, default=0.0)
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))

@@ -241,6 +241,8 @@ class BillHistoryItem(BaseModel):
     customer_name: str
     status: str
     subtotal: float
+    discount: float = 0.0
+    discount_reason: str = ""
     tax: float
     total: float
     payment_method: str | None
@@ -598,6 +600,8 @@ def get_bill_history(
             customer_name=order.customer_name,
             status=order.status,
             subtotal=order.subtotal,
+            discount=order.discount,
+            discount_reason=order.discount_reason,
             tax=order.tax,
             total=order.total,
             payment_method=payment_method,

@@ -175,11 +175,21 @@ def accept_order(db: Session, order_id: int) -> Order:
     return order
 
 
-def close_order(db: Session, order_id: int, payment_method: str, tendered: float) -> Order:
+def close_order(
+    db: Session, order_id: int,
+    payment_method: str, tendered: float,
+    discount: float = 0.0, discount_reason: str = "",
+) -> Order:
     """Cashier closes an already-accepted bill. accepted -> paid.
 
     Records a Payment row. The order must have been accepted by the
     kitchen first; otherwise the cashier has nothing to bill yet.
+
+    M21 — optionally apply a fixed-amount discount. The discount
+    reduces the taxable base (tax recomputed on discounted subtotal)
+    and the grand total. Permission + max-cap guards are enforced
+    by the route handler before this service is called — see
+    `api.orders.close_endpoint`.
     """
     order = db.get(Order, order_id)
     if not order:
@@ -188,6 +198,18 @@ def close_order(db: Session, order_id: int, payment_method: str, tendered: float
         raise ValueError(
             f"Cannot close order in status '{order.status}' — kitchen must accept first"
         )
+
+    # Apply discount (negative amounts are silently clamped to 0)
+    applied_discount = max(0.0, float(discount))
+    order.discount = round(applied_discount, 2)
+    order.discount_reason = (discount_reason or "")[:120]
+
+    # Recompute totals: taxable base is subtotal minus discount, tax on
+    # that, grand total = taxable + tax.
+    taxable = max(0.0, order.subtotal - order.discount)
+    order.tax = round(taxable * get_tax_rate(), 2)
+    order.total = round(taxable + order.tax, 2)
+
     tendered_amount = tendered if tendered > 0 else order.total
     change = round(tendered_amount - order.total, 2)
     payment = Payment(
@@ -221,7 +243,8 @@ def to_order_out(o: Order) -> OrderOut:
     return OrderOut(
         id=o.id, number=o.number, table_id=o.table_id, status=o.status,
         type=o.type, customer_name=o.customer_name, notes=o.notes,
-        subtotal=o.subtotal, tax=o.tax, total=o.total,
+        subtotal=o.subtotal, discount=o.discount, discount_reason=o.discount_reason,
+        tax=o.tax, total=o.total,
         created_at=o.created_at, updated_at=o.updated_at,
         items=[
             OrderItemOut(
