@@ -83,6 +83,7 @@ def create_product_endpoint(payload: ProductIn, db: Session = Depends(get_db), u
         p = crud.create_product(
             db, name=payload.name, description=payload.description, price=payload.price,
             category_id=payload.category_id, image=payload.image, active=payload.active, sort=payload.sort,
+            cost=payload.cost,
             kind=payload.kind,
         )
     except ValueError as e:
@@ -97,6 +98,7 @@ def update_product_endpoint(pid: int, payload: ProductUpdateIn, db: Session = De
             db, pid,
             name=payload.name, description=payload.description, price=payload.price,
             category_id=payload.category_id, image=payload.image, active=payload.active, sort=payload.sort,
+            cost=payload.cost,
             kind=payload.kind,
         )
     except ValueError as e:
@@ -206,7 +208,11 @@ class SalesSummary(BaseModel):
     total_orders: int
     total_items_sold: int  # quantity across all paid bill line items
     avg_order_value: float
-    profit: float  # revenue - (simulated cost at 30%)
+    # M27 — profit is now real: revenue − Σ(qty × product.cost). When a
+    # product's cost is unset (0), its COGS is treated as $0, so legacy
+    # installs keep working until the admin fills in costs.
+    cogs: float
+    profit: float
 
 
 class CategorySales(BaseModel):
@@ -340,8 +346,19 @@ def get_sales_summary(
         items_q = items_q.filter(Order.created_at < end)
     total_items_sold = int(items_q.scalar() or 0)
 
-    # Simulated profit (30% cost)
-    profit = total_revenue * 0.70
+    # M27 — real COGS: Σ(qty × product.cost) across the same paid lines.
+    # COALESCE handles products with NULL cost (legacy rows); we treat
+    # those as $0. Sum is on `qty * cost` which SQLite evaluates in floats.
+    cogs_q = (
+        db.query(func.coalesce(func.sum(OrderItem.qty * Product.cost), 0.0))
+        .join(Product, Product.id == OrderItem.product_id)
+        .join(Order, Order.id == OrderItem.order_id)
+        .filter(Order.status == "paid", OrderItem.status != "cancelled", Order.created_at >= start)
+    )
+    if end:
+        cogs_q = cogs_q.filter(Order.created_at < end)
+    cogs = float(cogs_q.scalar() or 0.0)
+    profit = total_revenue - cogs
 
     return SalesSummary(
         period=period,
@@ -349,6 +366,7 @@ def get_sales_summary(
         total_orders=total_orders,
         total_items_sold=total_items_sold,
         avg_order_value=round(avg_order_value, 2),
+        cogs=round(cogs, 2),
         profit=round(profit, 2),
     )
 

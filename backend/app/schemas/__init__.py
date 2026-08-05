@@ -42,6 +42,7 @@ class ProductOut(BaseModel):
     category_id: int
     image: str
     active: bool
+    cost: float = 0.0  # M27 — COGS per unit, 0 if unset
     kind: str | None = None  # overrides category station routing
 
 
@@ -220,6 +221,7 @@ class ProductIn(BaseModel):
     image: str = ""
     active: bool = True
     sort: int = 0
+    cost: float = Field(default=0.0, ge=0)  # M27 — COGS per unit
     kind: str | None = Field(default=None, pattern=r"^(kitchen|bar|both)$")  # overrides category kind
 
 
@@ -231,6 +233,7 @@ class ProductUpdateIn(BaseModel):
     image: str | None = None
     active: bool | None = None
     sort: int | None = None
+    cost: float | None = Field(default=None, ge=0)  # M27 — COGS per unit
     kind: str | None = Field(default=None, pattern=r"^(kitchen|bar|both)$")  # overrides category kind
 
 

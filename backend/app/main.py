@@ -125,11 +125,30 @@ def _migrate_station_columns() -> None:
             if "discount_reason" not in order_cols:
                 connection.execute(text("ALTER TABLE orders ADD COLUMN discount_reason VARCHAR(120) DEFAULT '' NOT NULL"))
 
+
+def _migrate_product_cost_column() -> None:
+    """M27 — add `products.cost` for installs that predate the COGS field.
+    Fresh DBs get the column from `Base.metadata.create_all` (the model
+    has a server_default of 0). Existing DBs need an explicit ALTER. The
+    column is NOT NULL DEFAULT 0 so historical rows pass through cleanly
+    and the profit calc treats their COGS as $0 until the admin fills it in.
+    """
+    engine = current_engine()
+    tables = set(inspect(engine).get_table_names())
+    if "products" not in tables:
+        return
+    prod_cols = {c["name"] for c in inspect(engine).get_columns("products")}
+    if "cost" not in prod_cols:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE products ADD COLUMN cost FLOAT DEFAULT 0.0 NOT NULL"))
+
+
 # Create tables on the active engine. Done eagerly at startup so the
 # first request doesn't pay the schema-creation cost.
 Base.metadata.create_all(bind=current_engine())
 _migrate_user_permissions()
 _migrate_station_columns()
+_migrate_product_cost_column()
 _bootstrap_default_admin()
 
 app = FastAPI(title=settings.app_name, version="1.0.0")

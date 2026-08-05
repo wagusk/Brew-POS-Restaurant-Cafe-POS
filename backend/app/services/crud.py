@@ -71,12 +71,13 @@ def get_product(db: Session, pid: int) -> Product | None:
     return db.get(Product, pid)
 
 
-def create_product(db: Session, *, name: str, description: str, price: float, category_id: int, image: str, active: bool, sort: int, kind: str | None = None) -> Product:
+def create_product(db: Session, *, name: str, description: str, price: float, category_id: int, image: str, active: bool, sort: int, cost: float = 0.0, kind: str | None = None) -> Product:
     if not db.get(Category, category_id):
         raise ValueError(f"Category {category_id} not found")
     p = Product(
         name=name, description=description, price=price,
-        category_id=category_id, image=image, active=active, sort=sort, kind=kind,
+        category_id=category_id, image=image, active=active, sort=sort,
+        cost=cost, kind=kind,
     )
     db.add(p)
     db.commit()
@@ -88,6 +89,7 @@ def update_product(
     db: Session, pid: int,
     *, name: str | None, description: str | None, price: float | None,
     category_id: int | None, image: str | None, active: bool | None, sort: int | None,
+    cost: float | None,
     kind: str | None,
 ) -> Product | None:
     p = db.get(Product, pid)
@@ -109,6 +111,8 @@ def update_product(
         p.active = active
     if sort is not None:
         p.sort = sort
+    if cost is not None:
+        p.cost = cost
     if kind is not None:
         p.kind = kind if kind else None
     db.commit()

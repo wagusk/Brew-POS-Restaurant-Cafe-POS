@@ -8,3 +8,8 @@ passlib==1.7.4
 bcrypt==4.2.0
 python-multipart==0.0.18
 websockets==13.1
+# PostgreSQL driver — SQLAlchemy 2.0 maps `postgresql://` to psycopg (v3) by
+# default, so installing the binary distribution is enough to enable the
+# Postgres path on the Settings > Database menu. `psycopg[binary]` pulls in
+# its own libpq build; no system Postgres dev headers required.
+psycopg[binary]==3.2.3

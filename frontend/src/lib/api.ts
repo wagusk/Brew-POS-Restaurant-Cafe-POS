@@ -50,6 +50,7 @@ export interface AdminProduct {
   image: string;
   active: boolean;
   sort: number;
+  cost: number;  // M27 — COGS per unit. 0 = not tracked.
   kind?: string;  // overrides category station routing — M20.1
 }
 export interface AdminTable {
@@ -68,16 +69,16 @@ export interface AdminUser {
 
 export const Admin = {
   listCategories: () => api.get<AdminCategory[]>('/admin/categories').then((r) => r.data),
-  createCategory: (p: { name: string; color: string; icon?: string; sort?: number }) =>
+  createCategory: (p: { name: string; color: string; icon?: string; sort?: number; kind?: 'kitchen' | 'bar' | 'both' }) =>
     api.post<AdminCategory>('/admin/categories', p).then((r) => r.data),
-  updateCategory: (id: number, p: Partial<{ name: string; color: string; icon: string; sort: number }>) =>
+  updateCategory: (id: number, p: Partial<{ name: string; color: string; icon: string; sort: number; kind: 'kitchen' | 'bar' | 'both' }>) =>
     api.patch<AdminCategory>(`/admin/categories/${id}`, p).then((r) => r.data),
   deleteCategory: (id: number) => api.delete<{ deleted: number }>(`/admin/categories/${id}`).then((r) => r.data),
 
   listProducts: () => api.get<AdminProduct[]>('/admin/products').then((r) => r.data),
-  createProduct: (p: { name: string; description?: string; price: number; category_id: number; image?: string; active?: boolean; kind?: string }) =>
+  createProduct: (p: { name: string; description?: string; price: number; category_id: number; image?: string; active?: boolean; cost?: number; kind?: string }) =>
     api.post<AdminProduct>('/admin/products', p).then((r) => r.data),
-  updateProduct: (id: number, p: Partial<{ name: string; description: string; price: number; category_id: number; image: string; active: boolean; kind?: string }>) =>
+  updateProduct: (id: number, p: Partial<{ name: string; description: string; price: number; category_id: number; image: string; active: boolean; cost: number; kind?: string }>) =>
     api.patch<AdminProduct>(`/admin/products/${id}`, p).then((r) => r.data),
   deleteProduct: (id: number) => api.delete<{ deleted: number }>(`/admin/products/${id}`).then((r) => r.data),
 

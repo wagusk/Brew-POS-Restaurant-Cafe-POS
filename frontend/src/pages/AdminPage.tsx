@@ -4,7 +4,7 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem,
   Switch, FormControlLabel, Stack, Divider, Tooltip, InputAdornment,
   Slider, Alert, CircularProgress, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow,
+  TableHead, TableRow, Snackbar,
 } from '@mui/material';
 import RestaurantIcon from '@mui/icons-material/Restaurant';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
@@ -811,213 +811,27 @@ function ReportsWorkspace({ color }: { color: string }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// CATEGORIES WORKSPACE — col2 list + col3 detail
-// ─────────────────────────────────────────────────────────────────────
-function CategoriesWorkspace({ color }: { color: string }) {
-  const dispatch = useAppDispatch();
-  const menuState = useAppSelector((s) => s.menu);
-  const [items, setItems] = useState<AdminCategory[]>([]);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [editing, setEditing] = useState<AdminCategory | null>(null);
-  const [creating, setCreating] = useState(false);
-  const [search, setSearch] = useState('');
-
-  const reload = () => {
-    Admin.listCategories().then((cats) => {
-      setItems(cats);
-      if (selectedId == null && cats.length) setSelectedId(cats[0].id);
-    }).catch(() => {});
-    import('../lib/api').then(({ Menu }) =>
-      Menu.full().then((d) => dispatch(setMenu({
-        categories: d.categories as any,
-        products: d.products as any,
-        tables: menuState.tables,
-      }))).catch(() => {})
-    );
-  };
-
-  useEffect(() => { reload(); }, []);
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter((c) => c.name.toLowerCase().includes(q) || c.color.toLowerCase().includes(q));
-  }, [items, search]);
-
-  const selected = items.find((c) => c.id === selectedId) ?? null;
-
-  const save = async (payload: { name: string; color: string; icon: string; sort: number }) => {
-    if (editing) {
-      await Admin.updateCategory(editing.id, payload);
-    } else {
-      const created = await Admin.createCategory(payload) as AdminCategory;
-      setSelectedId(created.id);
-    }
-    setEditing(null);
-    setCreating(false);
-    reload();
-  };
-
-  const remove = async (id: number) => {
-    if (!confirm('Delete this category? (must have no products)')) return;
-    try {
-      await Admin.deleteCategory(id);
-      setSelectedId(null);
-      reload();
-    } catch (e: any) {
-      alert(e?.response?.data?.detail ?? 'Cannot delete');
-    }
-  };
-
-  return (
-    <>
-      {/* COLUMN 2 — list */}
-      <Paper
-        square
-        sx={{
-          width: '25%',
-          minWidth: 220,
-          maxWidth: 320,
-          display: 'flex',
-          flexDirection: 'column',
-          borderTop: 'none', borderBottom: 'none',
-          borderRadius: 0,
-        }}
-      >
-        <ColumnHeader
-          title="CATEGORIES"
-          color={color}
-          count={items.length}
-          action={
-            <Button
-              size="small"
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={() => setCreating(true)}
-              sx={{
-                bgcolor: color, '&:hover': { bgcolor: color, filter: 'brightness(0.9)' },
-                borderRadius: `${SHAPE.button}px`,
-                minHeight: 36, fontWeight: 700, px: 1.25,
-              }}
-            >
-              New
-            </Button>
-          }
-        />
-        <Box sx={{ p: 1.5, borderBottom: '1px solid', borderColor: 'border.default' }}>
-          <TextField
-            fullWidth
-            size="small"
-            placeholder="Search categories..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
-                </InputAdornment>
-              ),
-            }}
-          />
-        </Box>
-        <Box sx={{ flex: 1, overflowY: 'auto' }}>
-          {filtered.length === 0 ? (
-            <ColumnEmpty message="No categories" />
-          ) : filtered.map((c) => (
-            <ListItemButton
-              key={c.id}
-              active={selectedId === c.id}
-              color={c.color}
-              label={c.name}
-              sublabel={`${c.color} · sort ${c.sort}`}
-              onClick={() => setSelectedId(c.id)}
-              accent={selectedId === c.id}
-              leading={<Typography sx={{ fontWeight: 700, fontSize: '0.95rem' }}>{c.name.charAt(0).toUpperCase()}</Typography>}
-            />
-          ))}
-        </Box>
-      </Paper>
-
-      <Divider orientation="vertical" flexItem />
-
-      {/* COLUMN 3 — detail */}
-      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <ColumnHeader
-          title="DETAIL"
-          color={color}
-          action={selected && (
-            <Box sx={{ display: 'flex', gap: 0.5 }}>
-              <Tooltip title="Edit">
-                <IconButton
-                  size="small"
-                  onClick={() => setEditing(selected)}
-                  sx={{
-                    bgcolor: 'rgba(43, 108, 255, 0.12)', color: '#2b6cff',
-                    borderRadius: `${SHAPE.iconBtn}px`,
-                    '&:hover': { bgcolor: 'rgba(43, 108, 255, 0.22)' },
-                  }}
-                >
-                  <EditIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-              <Tooltip title="Delete">
-                <IconButton
-                  size="small"
-                  onClick={() => remove(selected.id)}
-                  sx={{
-                    bgcolor: 'rgba(216, 69, 60, 0.12)', color: '#d8453c',
-                    borderRadius: `${SHAPE.iconBtn}px`,
-                    '&:hover': { bgcolor: 'rgba(216, 69, 60, 0.22)' },
-                  }}
-                >
-                  <DeleteIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            </Box>
-          )}
-        />
-        {!selected ? (
-          <ColumnEmpty message="No category selected" />
-        ) : (
-          <Box sx={{ flex: 1, overflowY: 'auto', p: 3 }}>
-            <DetailRow label="Name" value={selected.name} />
-            <DetailRow label="Color" value={selected.color} swatch={selected.color} />
-            <DetailRow label="Sort" value={String(selected.sort)} />
-            <DetailRow label="ID" value={`#${selected.id}`} />
-          </Box>
-        )}
-      </Box>
-
-      <CategoryDialog
-        open={creating || !!editing}
-        initial={editing ?? undefined}
-        onClose={() => { setCreating(false); setEditing(null); }}
-        onSave={save}
-      />
-    </>
-  );
-}
-
 function CategoryDialog({ open, initial, onClose, onSave }: {
   open: boolean;
   initial?: AdminCategory;
   onClose: () => void;
-  onSave: (p: { name: string; color: string; icon: string; sort: number }) => void | Promise<void>;
+  onSave: (p: { name: string; color: string; kind: 'kitchen' | 'bar' | 'both'; icon?: string; sort?: number }) => void | Promise<void>;
 }) {
   const [name, setName] = useState('');
-  const [color, setColor] = useState('#5b8def');
-  const [icon, setIcon] = useState('restaurant');
+  const [color, setColor] = useState('#e07b1a');
+  const [kind, setKind] = useState<'kitchen' | 'bar' | 'both'>('kitchen');
   const [sort, setSort] = useState(0);
 
   useEffect(() => {
     if (open) {
       setName(initial?.name ?? '');
-      setColor(initial?.color ?? '#5b8def');
-      setIcon(initial?.icon ?? 'restaurant');
+      setColor(initial?.color ?? '#e07b1a');
+      setKind((initial?.kind as 'kitchen' | 'bar' | 'both') ?? 'kitchen');
       setSort(initial?.sort ?? 0);
     }
   }, [open, initial]);
+
+  const validColor = /^#[0-9a-fA-F]{6}$/.test(color);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: `${SHAPE.dialog}px` } }}>
@@ -1025,6 +839,19 @@ function CategoryDialog({ open, initial, onClose, onSave }: {
       <DialogContent dividers>
         <Stack spacing={2}>
           <TextField label="Name" value={name} onChange={(e) => setName(e.target.value)} fullWidth size="small" autoFocus />
+          <TextField
+            select
+            label="Station"
+            value={kind}
+            onChange={(e) => setKind(e.target.value as 'kitchen' | 'bar' | 'both')}
+            fullWidth
+            size="small"
+            helperText="Which prep station handles orders in this category."
+          >
+            <MenuItem value="kitchen">Kitchen</MenuItem>
+            <MenuItem value="bar">Bar</MenuItem>
+            <MenuItem value="both">Both</MenuItem>
+        </TextField>
           <TextField label="Sort order" type="number" value={sort} onChange={(e) => setSort(parseInt(e.target.value) || 0)} fullWidth size="small" />
           <Box>
             <Typography variant="caption" color="text.secondary">Color</Typography>
@@ -1037,7 +864,7 @@ function CategoryDialog({ open, initial, onClose, onSave }: {
               />
               <TextField value={color} onChange={(e) => setColor(e.target.value)} size="small" sx={{ flex: 1 }} placeholder="#rrggbb" />
               <Box sx={{ width: 48, height: 48, borderRadius: `${SHAPE.button}px`, bgcolor: color, border: '1px solid', borderColor: 'border.default' }} />
-            </Stack>
+           </Stack>
             <Stack direction="row" spacing={0.5} mt={1} flexWrap="wrap" useFlexGap>
               {['#ef4444', '#f97316', '#eab308', '#22c55e', '#14b8a6', '#0ea5e9', '#6366f1', '#a855f7', '#ec4899', '#64748b'].map((sw) => (
                 <Box
@@ -1049,27 +876,99 @@ function CategoryDialog({ open, initial, onClose, onSave }: {
                   }}
                 />
               ))}
-            </Stack>
-          </Box>
-        </Stack>
-      </DialogContent>
+           </Stack>
+         </Box>
+       </Stack>
+     </DialogContent>
       <DialogActions sx={{ p: 2 }}>
         <Button onClick={onClose} color="warning">Cancel</Button>
         <Button
-          onClick={() => name && /^#[0-9a-fA-F]{6}$/.test(color) && onSave({ name, color, icon, sort })}
+          onClick={() => name && validColor && onSave({ name, color, kind, sort })}
           variant="contained"
-          disabled={!name || !/^#[0-9a-fA-F]{6}$/.test(color)}
+          disabled={!name || !validColor}
           sx={{
-            bgcolor: MAIN_COLOR.categories,
-            '&:hover': { bgcolor: '#086a5d' },
+            bgcolor: MAIN_COLOR.products,
+            '&:hover': { bgcolor: '#0a4cdb' },
             borderRadius: `${SHAPE.button}px`,
             fontWeight: 700,
           }}
         >
           {initial ? 'Save' : 'Create'}
-        </Button>
-      </DialogActions>
-    </Dialog>
+       </Button>
+     </DialogActions>
+   </Dialog>
+  );
+}
+
+function CategoryDeleteConfirm({
+  category, productCount, onCancel, onConfirm,
+}: {
+  category: AdminCategory | null;
+  productCount: number;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Dialog
+      open={!!category}
+      onClose={onCancel}
+      maxWidth="xs"
+      fullWidth
+      PaperProps={{ sx: { borderRadius: `${SHAPE.dialog}px` } }}
+    >
+      <DialogTitle sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+        <DeleteIcon sx={{ color: '#d8453c' }} />
+        Delete category?
+   </DialogTitle>
+      <DialogContent dividers>
+        {category && (
+          <Stack spacing={2}>
+            <Typography>
+              Are you sure you want to delete
+              <Box component="span" sx={{ fontWeight: 700, mx: 0.5 }}>
+                {category.name}
+            </Box>
+              ? This action cannot be undone.
+         </Typography>
+            {productCount > 0 && (
+              <Alert severity="warning" sx={{ borderRadius: 1 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  {productCount} product{productCount === 1 ? '' : 's'} still use this category.
+             </Typography>
+                <Typography variant="caption">
+                  Move them to another category first, then come back to delete this one.
+             </Typography>
+           </Alert>
+            )}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, p: 1.5, borderRadius: 1, bgcolor: 'surface.muted' }}>
+              <Box sx={{ width: 28, height: 28, borderRadius: '50%', bgcolor: category.color, flexShrink: 0 }} />
+              <Box>
+                <Typography variant="body2" sx={{ fontWeight: 700 }}>{category.name}</Typography>
+                <Typography variant="caption" sx={{ color: 'text.secondary' }}>{category.color}</Typography>
+             </Box>
+         </Box>
+       </Stack>
+        )}
+   </DialogContent>
+      <DialogActions sx={{ p: 2 }}>
+        <Button onClick={onCancel} sx={{ borderRadius: `${SHAPE.button}px`, fontWeight: 700 }}>
+          Cancel
+     </Button>
+        <Button
+          onClick={onConfirm}
+          variant="contained"
+          disabled={productCount > 0}
+          sx={{
+            bgcolor: '#d8453c',
+            '&:hover': { bgcolor: '#b7332b' },
+            borderRadius: `${SHAPE.button}px`,
+            fontWeight: 700,
+          }}
+        >
+          {productCount > 0 ? 'Cannot delete' : 'Delete'}
+     </Button>
+   </DialogActions>
+ </Dialog>
   );
 }
 
@@ -1089,6 +988,11 @@ function ProductsWorkspace({ color }: { color: string }) {
   const [editing, setEditing] = useState<AdminProduct | null>(null);
   const [creating, setCreating] = useState(false);
   const [search, setSearch] = useState('');
+  // Category CRUD — col2 also manages categories, not just filters them.
+  const [editingCat, setEditingCat] = useState<AdminCategory | null>(null);
+  const [creatingCat, setCreatingCat] = useState(false);
+  const [confirmDeleteCat, setConfirmDeleteCat] = useState<AdminCategory | null>(null);
+  const [catError, setCatError] = useState<string | null>(null);
 
   const reload = () => {
     Admin.listProducts().then(setItems).catch(() => {});
@@ -1117,7 +1021,7 @@ function ProductsWorkspace({ color }: { color: string }) {
   const selCat = selected ? cats.find((c) => c.id === selected.category_id) : null;
   const catColor = (id: number) => cats.find((c) => c.id === id)?.color || '#999';
 
-  const save = async (p: { name: string; description: string; price: number; category_id: number; active: boolean }) => {
+  const save = async (p: { name: string; description: string; price: number; category_id: number; active: boolean; cost: number }) => {
     if (editing) {
       await Admin.updateProduct(editing.id, p);
     } else {
@@ -1141,6 +1045,47 @@ function ProductsWorkspace({ color }: { color: string }) {
     reload();
   };
 
+  // ── Category CRUD ────────────────────────────────────────────────────
+  // A category with products still attached can't be deleted server-side,
+  // so the button is disabled (with a tooltip) when count > 0.
+  const saveCat = async (p: { name: string; color: string; icon?: string; sort?: number; kind?: 'kitchen' | 'bar' | 'both' }) => {
+    if (editingCat) {
+      await Admin.updateCategory(editingCat.id, p);
+    } else {
+      await Admin.createCategory(p);
+    }
+    setEditingCat(null);
+    setCreatingCat(false);
+    reload();
+  };
+
+  const removeCat = async (id: number) => {
+    const cat = cats.find((c) => c.id === id);
+    if (!cat) return;
+    const count = items.filter((p) => p.category_id === id).length;
+    if (count > 0) {
+      // Block silently — surface in the confirm dialog itself.
+      setConfirmDeleteCat(cat);
+      return;
+    }
+    setConfirmDeleteCat(cat);
+  };
+
+  const confirmRemoveCat = async () => {
+    if (!confirmDeleteCat) return;
+    const id = confirmDeleteCat.id;
+    try {
+      await Admin.deleteCategory(id);
+      if (filterCat === id) setFilterCat('all');
+      setConfirmDeleteCat(null);
+      reload();
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || e?.message || 'Failed to delete category.';
+      setCatError(typeof msg === 'string' ? msg : 'Failed to delete category.');
+      setConfirmDeleteCat(null);
+    }
+  };
+
   return (
     <>
       {/* COLUMN 2 — category filter (acts like cashier's category chips) */}
@@ -1156,7 +1101,26 @@ function ProductsWorkspace({ color }: { color: string }) {
           borderRadius: 0,
         }}
       >
-        <ColumnHeader title="FILTER" color={color} count={cats.length} />
+        <ColumnHeader
+          title="CATEGORIES"
+          color={color}
+          count={cats.length}
+          action={
+            <Button
+              size="small"
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => setCreatingCat(true)}
+              sx={{
+                bgcolor: color, '&:hover': { bgcolor: color, filter: 'brightness(0.9)' },
+                borderRadius: `${SHAPE.button}px`,
+                minHeight: 36, fontWeight: 700, px: 1.25,
+              }}
+            >
+              New
+           </Button>
+          }
+        />
         <Box sx={{ flex: 1, overflowY: 'auto' }}>
           <ListItemButton
             active={filterCat === 'all'}
@@ -1169,16 +1133,17 @@ function ProductsWorkspace({ color }: { color: string }) {
           />
           {cats.map((c) => {
             const count = items.filter((p) => p.category_id === c.id).length;
+            const isActive = filterCat === c.id;
             return (
-              <ListItemButton
+              <CategoryRow
                 key={c.id}
-                active={filterCat === c.id}
-                color={c.color}
-                label={c.name}
-                sublabel={`${count} product${count === 1 ? '' : 's'}`}
-                onClick={() => { setFilterCat(c.id); setSelectedId(null); }}
-                accent={filterCat === c.id}
-                leading={<Typography sx={{ fontWeight: 700, fontSize: '0.95rem' }}>{c.name.charAt(0).toUpperCase()}</Typography>}
+                category={c}
+                productCount={count}
+                active={isActive}
+                onSelect={() => { setFilterCat(c.id); setSelectedId(null); }}
+                onEdit={() => setEditingCat(c)}
+                onDelete={() => removeCat(c.id)}
+                iconBtnShape={SHAPE.iconBtn}
               />
             );
           })}
@@ -1299,6 +1264,7 @@ function ProductsWorkspace({ color }: { color: string }) {
             <DetailRow label="Name" value={selected.name} />
             <DetailRow label="Description" value={selected.description || '—'} />
             <DetailRow label="Price" value={`$${selected.price.toFixed(2)}`} />
+            <DetailRow label="Cost" value={`$${Number(selected.cost ?? 0).toFixed(2)}${selected.cost > 0 ? '' : ' (not set)'}`} />
             <DetailRow label="Category" value={selCat?.name ?? `Cat ${selected.category_id}`} swatch={selCat?.color} />
             <DetailRow label="Status" value={selected.active ? 'Active' : 'Hidden'} />
             <DetailRow label="ID" value={`#${selected.id}`} />
@@ -1324,6 +1290,31 @@ function ProductsWorkspace({ color }: { color: string }) {
         onClose={() => { setCreating(false); setEditing(null); }}
         onSave={save}
       />
+
+      <CategoryDialog
+        open={creatingCat || !!editingCat}
+        initial={editingCat ?? undefined}
+        onClose={() => { setCreatingCat(false); setEditingCat(null); }}
+        onSave={saveCat}
+      />
+
+      <CategoryDeleteConfirm
+        category={confirmDeleteCat}
+        productCount={confirmDeleteCat ? items.filter((p) => p.category_id === confirmDeleteCat.id).length : 0}
+        onCancel={() => setConfirmDeleteCat(null)}
+        onConfirm={confirmRemoveCat}
+      />
+
+      <Snackbar
+        open={!!catError}
+        autoHideDuration={4500}
+        onClose={() => setCatError(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity="error" onClose={() => setCatError(null)} sx={{ borderRadius: 1 }}>
+          {catError}
+       </Alert>
+     </Snackbar>
     </>
   );
 }
@@ -1333,11 +1324,12 @@ function ProductDialog({ open, initial, categories, onClose, onSave }: {
   initial?: AdminProduct;
   categories: AdminCategory[];
   onClose: () => void;
-  onSave: (p: { name: string; description: string; price: number; category_id: number; active: boolean }) => void | Promise<void>;
+  onSave: (p: { name: string; description: string; price: number; category_id: number; active: boolean; cost: number }) => void | Promise<void>;
 }) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('0');
+  const [cost, setCost] = useState('0');
   const [categoryId, setCategoryId] = useState<number | ''>('');
   const [active, setActive] = useState(true);
 
@@ -1346,6 +1338,7 @@ function ProductDialog({ open, initial, categories, onClose, onSave }: {
       setName(initial?.name ?? '');
       setDescription(initial?.description ?? '');
       setPrice(String(initial?.price ?? 0));
+      setCost(String(initial?.cost ?? 0));
       setCategoryId(initial?.category_id ?? (categories[0]?.id ?? ''));
       setActive(initial?.active ?? true);
     }
@@ -1357,6 +1350,7 @@ function ProductDialog({ open, initial, categories, onClose, onSave }: {
       name,
       description,
       price: parseFloat(price) || 0,
+      cost: Math.max(0, parseFloat(cost) || 0),
       category_id: Number(categoryId),
       active,
     });
@@ -1370,6 +1364,17 @@ function ProductDialog({ open, initial, categories, onClose, onSave }: {
           <TextField label="Name" value={name} onChange={(e) => setName(e.target.value)} fullWidth size="small" autoFocus />
           <TextField label="Description" value={description} onChange={(e) => setDescription(e.target.value)} fullWidth size="small" multiline rows={2} />
           <TextField label="Price" type="number" value={price} onChange={(e) => setPrice(e.target.value)} fullWidth size="small" InputProps={{ startAdornment: <Typography sx={{ mr: 0.5 }}>$</Typography> }} />
+          <TextField
+            label="Cost (per unit)"
+            type="number"
+            value={cost}
+            onChange={(e) => setCost(e.target.value)}
+            fullWidth
+            size="small"
+            helperText="Used to compute profit in reports. Leave 0 if unknown."
+            InputProps={{ startAdornment: <Typography sx={{ mr: 0.5 }}>$</Typography> }}
+            inputProps={{ min: 0, step: 0.01 }}
+          />
           <TextField select label="Category" value={categoryId} onChange={(e) => setCategoryId(parseInt(e.target.value))} fullWidth size="small">
             {categories.map((c) => (
               <MenuItem key={c.id} value={c.id}>
@@ -1580,6 +1585,105 @@ function TablesWorkspace({ color }: { color: string }) {
         onSave={save}
       />
     </>
+  );
+}
+
+function CategoryRow({
+  category, productCount, active, onSelect, onEdit, onDelete, iconBtnShape,
+}: {
+  category: AdminCategory;
+  productCount: number;
+  active: boolean;
+  onSelect: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  iconBtnShape: number;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const canDelete = productCount === 0;
+  return (
+    <Box
+      role="button"
+      tabIndex={0}
+      onClick={onSelect}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onSelect(); }}
+      sx={{
+        position: 'relative',
+        px: 1.75,
+        py: 1.25,
+        minHeight: 56,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 1.5,
+        cursor: 'pointer',
+        borderBottom: '1px solid',
+        borderColor: 'border.soft',
+        bgcolor: active ? `${category.color}14` : 'transparent',
+        borderLeft: '3px solid',
+        borderLeftColor: active ? category.color : 'transparent',
+        transition: 'background-color 0.1s',
+        '&:hover': { bgcolor: active ? `${category.color}1f` : 'surface.muted' },
+        '&:focus-visible': { outline: `2px solid ${category.color}`, outlineOffset: -2 },
+      }}
+    >
+      <Box
+        sx={{
+          width: 32, height: 32,
+          borderRadius: `${iconBtnShape}px`,
+          bgcolor: active ? category.color : 'surface.muted',
+          color: active ? '#fff' : category.color,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexShrink: 0,
+          fontWeight: 700, fontSize: '0.95rem',
+        }}
+      >
+        {category.name.charAt(0).toUpperCase()}
+    </Box>
+      <Box sx={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+        <Typography sx={{ fontWeight: active ? 700 : 600, lineHeight: 1.2, color: 'text.primary', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {category.name}
+      </Typography>
+        <Typography variant="caption" sx={{ display: 'block', color: active ? category.color : 'text.secondary', fontWeight: 600 }}>
+          {productCount} product{productCount === 1 ? '' : 's'}
+      </Typography>
+    </Box>
+      {(hovered || active) && (
+        <Box sx={{ display: 'flex', gap: 0.25, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+          <Tooltip title="Edit category">
+            <IconButton
+              size="small"
+              onClick={onEdit}
+              sx={{
+                bgcolor: 'rgba(43, 108, 255, 0.12)', color: '#2b6cff',
+                borderRadius: `${iconBtnShape}px`,
+                '&:hover': { bgcolor: 'rgba(43, 108, 255, 0.22)' },
+              }}
+            >
+              <EditIcon sx={{ fontSize: 16 }} />
+          </IconButton>
+        </Tooltip>
+          <Tooltip title={canDelete ? 'Delete category' : `Move ${productCount} product${productCount === 1 ? '' : 's'} to another category first`}>
+            <span>
+              <IconButton
+                size="small"
+                disabled={!canDelete}
+                onClick={onDelete}
+                sx={{
+                  bgcolor: 'rgba(216, 69, 60, 0.12)', color: '#d8453c',
+                  borderRadius: `${iconBtnShape}px`,
+                  '&:hover': { bgcolor: 'rgba(216, 69, 60, 0.22)' },
+                  '&.Mui-disabled': { opacity: 0.35 },
+                }}
+              >
+                <DeleteIcon sx={{ fontSize: 16 }} />
+            </IconButton>
+          </span>
+        </Tooltip>
+      </Box>
+      )}
+  </Box>
   );
 }
 

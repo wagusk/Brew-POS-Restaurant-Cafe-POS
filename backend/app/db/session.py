@@ -15,9 +15,26 @@ class Base(DeclarativeBase):
     pass
 
 
+def _normalise_url(url: str) -> str:
+    """Pin the DBAPI driver explicitly so SQLAlchemy never has to guess.
+
+    Without this, a bare `postgresql://...` URL with both psycopg2 and
+    psycopg installed would pick whichever registered first; we want
+    psycopg (v3). The SQLite and MySQL paths are unchanged. We only
+    rewrite scheme, never the rest of the URL, so user-supplied host/port/
+    creds survive intact.
+    """
+    if url.startswith("postgresql://"):
+        return "postgresql+psycopg://" + url[len("postgresql://"):]
+    if url.startswith("postgres://"):
+        # `postgres://` is the legacy scheme some PaaS dashboards still emit.
+        return "postgresql+psycopg://" + url[len("postgres://"):]
+    return url
+
+
 _lock = threading.Lock()
 _engine: Engine = create_engine(
-    get_active_db_url(),
+    _normalise_url(get_active_db_url()),
     connect_args={"check_same_thread": False} if get_active_db_url().startswith("sqlite") else {},
     pool_pre_ping=True,
 )
@@ -26,7 +43,7 @@ SessionLocal = sessionmaker(bind=_engine, autoflush=False, autocommit=False)
 
 def _build_engine(url: str) -> Engine:
     return create_engine(
-        url,
+        _normalise_url(url),
         connect_args={"check_same_thread": False} if url.startswith("sqlite") else {},
         pool_pre_ping=True,
     )

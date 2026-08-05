@@ -43,6 +43,12 @@ class Product(Base):
     name: Mapped[str] = mapped_column(String(120))
     description: Mapped[str] = mapped_column(Text, default="")
     price: Mapped[float] = mapped_column(Float)
+    # M27 — cost-of-goods per unit. Used by the reports profit calc
+    # (revenue − Σ(qty × product.cost)). Stored as a per-unit dollar
+    # amount, NOT a fraction. Defaults to 0 so existing products show
+    # "no COGS tracked" until the admin fills it in — profit math
+    # degrades gracefully (treats missing cost as $0).
+    cost: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"))
     image: Mapped[str] = mapped_column(String(200), default="")
     active: Mapped[bool] = mapped_column(Boolean, default=True)
