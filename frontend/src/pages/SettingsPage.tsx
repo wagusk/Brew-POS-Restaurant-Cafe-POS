@@ -36,11 +36,11 @@ import type { AdminCategory, AdminProduct, AdminTable } from '../lib/api';
 // SHARP THEME OVERRIDES — settings uses tighter radii (4-8px) like admin
 // ─────────────────────────────────────────────────────────────────────
 const SHAPE = {
-  card: 6,
-  button: 4,
-  chip: 4,
-  iconBtn: 4,
-  dialog: 8,
+  card: 12,
+  button: 12,
+  chip: 12,
+  iconBtn: 12,
+  dialog: 12,
 };
 
 // ── Main menu color codes ────────────────────────────────────────────
@@ -288,12 +288,7 @@ export default function SettingsPage() {
             (those workspaces live on the Admin page now). SettingsPage
             only owns the device / environment knobs: Database + Printer. */}
         {main === 'database' && (
-          <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-            {/* Combined Database view: URL editor (top) + operation tiles
-                (bottom), no divider — the user wants them as one block.
-                flexDirection column lets each workspace keep its own
-                internal vertical scroll (overflowY:auto) so tall operation
-                tiles don't push the URL editor offscreen. */}
+          <Box sx={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
             <DatabaseWorkspace color={color} />
             <DbOpsWorkspace color={color} />
           </Box>
@@ -833,7 +828,7 @@ function CategoryDialog({
                 type="color"
                 value={color}
                 onChange={(e) => setColor(e.target.value)}
-                style={{ width: 48, height: 48, border: 'none', borderRadius: 6, cursor: 'pointer', background: 'transparent' }}
+                style={{ width: 48, height: 48, border: 'none', borderRadius: 12, cursor: 'pointer', background: 'transparent' }}
               />
               <TextField
                 value={color}
@@ -1940,7 +1935,7 @@ function DatabaseWorkspace({ color }: { color: string }) {
   }
 
   return (
-    <Box sx={{ flex: 1, overflowY: 'auto', p: 3, pb: 0 }}>
+    <Box sx={{ p: 3, pb: 0 }}>
       <ColumnHeader title="DATABASE" color={color} />
 
       {error && (
@@ -2107,7 +2102,7 @@ function DbOpsWorkspace({ color }: { color: string }) {
   }
 
   return (
-    <Box sx={{ flex: 1, overflowY: 'auto', p: 3, pt: 0 }}>
+    <Box sx={{ p: 3, pt: 0 }}>
       <ColumnHeader title="DATABASE OPERATIONS" color={color} />
 
       {error && (

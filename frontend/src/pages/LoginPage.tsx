@@ -60,7 +60,7 @@ export default function LoginPage() {
           p: 4,
           width: '100%',
           maxWidth: 420,
-          borderRadius: 3,
+          borderRadius: '12px',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'stretch',
@@ -72,7 +72,7 @@ export default function LoginPage() {
             sx={{
               width: 44,
               height: 44,
-              borderRadius: 2,
+              borderRadius: '12px',
               bgcolor: 'role.cashier',
               color: 'common.white',
               display: 'flex',
@@ -102,7 +102,7 @@ export default function LoginPage() {
             fontSize: 28,
             fontWeight: 700,
             minHeight: 64,
-            borderRadius: 2,
+            borderRadius: '12px',
             borderColor: 'border.default',
             bgcolor: 'surface.muted',
             color: 'text.primary',
@@ -138,7 +138,7 @@ export default function LoginPage() {
                     minHeight: 64,
                     fontSize: 16,
                     fontWeight: 700,
-                    borderRadius: 2,
+                    borderRadius: '12px',
                     borderColor: 'border.strong',
                   }}
                 >
@@ -155,7 +155,7 @@ export default function LoginPage() {
                   color="primary"
                   onClick={submit}
                   disabled={loading || pin.length < 3}
-                  sx={{ minHeight: 64, fontSize: 16, fontWeight: 700, borderRadius: 2 }}
+                  sx={{ minHeight: 64, fontSize: 16, fontWeight: 700, borderRadius: '12px' }}
                 >
                   Enter
                 </Button>
@@ -171,7 +171,7 @@ export default function LoginPage() {
                   minHeight: 64,
                   fontSize: 22,
                   fontWeight: 700,
-                  borderRadius: 2,
+                  borderRadius: '12px',
                   bgcolor: 'surface.paper',
                   borderColor: 'border.strong',
                   color: 'text.primary',

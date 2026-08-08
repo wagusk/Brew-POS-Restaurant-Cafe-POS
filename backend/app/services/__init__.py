@@ -311,14 +311,13 @@ def update_order_status(db: Session, order_id: int, status: str | None, item_id:
         item = db.get(OrderItem, item_id)
         if item and item.order_id == order.id:
             item.status = item_status
-            if item_status == "preparing" and order.status in ("open", "accepted"):
-                # Don't override accepted — only bump if still open.
-                if order.status == "open":
-                    order.status = "preparing"
-            elif item_status == "ready":
-                order.status = "ready"
-            elif item_status == "served":
-                order.status = "served"
+    # Auto-bump order.status to 'served' when ALL items are served/cancelled
+    # so the cashier can close the bill. This runs regardless of which station
+    # triggered the update.
+    if item_status in ("served", "cancelled"):
+        db.refresh(order)
+        if all(i.status in ("served", "cancelled") for i in order.items):
+            order.status = "served"
     db.commit()
     db.refresh(order)
     return order

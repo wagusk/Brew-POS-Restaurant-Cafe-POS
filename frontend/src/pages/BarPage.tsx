@@ -13,14 +13,15 @@ import InventoryIcon from '@mui/icons-material/Inventory';
 import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 import PersonOffIcon from '@mui/icons-material/PersonOff';
 import VerifiedIcon from '@mui/icons-material/Verified';
+import PrintOutlinedIcon from '@mui/icons-material/PrintOutlined';
+import CircularProgress from '@mui/material/CircularProgress';
 import { Orders } from '../lib/api';
 import { ws } from '../lib/ws';
 import type { Order, OrderItem } from '../types';
 
-// Bar display palette — cyan/teal so the bartender's screen reads as
-// "drink station", distinct from the amber kitchen display.
-const BAR_COLOR = '#0e9ec7';          // primary bar station accent
-const BAR_ACCENT = '#bcdce7';         // soft tint for empty/header bars
+// Bar display palette — matches kitchen display for unified look
+const BAR_COLOR = 'role.kitchen';          // primary station accent (theme amber)
+const BAR_ACCENT = 'surface.muted';        // soft tint for empty/header bars
 
 // ── Predefined reject reasons — each becomes a big square touch tile ──
 // Common bar scenarios; bartender can also type a free-form reason.
@@ -46,7 +47,7 @@ type RejectTarget =
 
 // Unified 8px rounded corners across cards, buttons, chips — matches Shell
 // menu bar and other pages.
-const RADIUS = '8px';
+const RADIUS = '12px';
 
 export default function BarPage() {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -56,13 +57,21 @@ export default function BarPage() {
   const [error, setError] = useState<string | null>(null);
   // Toast that announces when an order disappears from the board.
   const [lastCancelled, setLastCancelled] = useState<{ number: number; reason: string } | null>(null);
+  // M20 — reprint ticket state (one in-flight reprint at a time keeps the
+  // UI simple; the bar rarely fires more than one reprint at once).
+  const [reprintingId, setReprintingId] = useState<number | null>(null);
+  const [snack, setSnack] = useState<{ msg: string; severity: 'success' | 'error' | 'info' } | null>(null);
 
   const reload = () => {
     // station=bar returns orders that contain at least one bar item. We
     // also drop cancelled/paid orders so the bartender doesn't see a
     // tombstone of the kitchen's finished tickets.
+    // Filter: keep orders that have at least one unserved bar item.
     Orders.list(undefined, 'bar').then((all) => {
-      setOrders(all.filter((o) => ['open', 'accepted', 'preparing', 'ready'].includes(o.status)));
+      setOrders(all.filter((o) => o.items.some((i) => {
+        const s = i.station ?? 'kitchen';
+        return (s === 'bar' || s === 'both') && i.status !== 'served' && i.status !== 'cancelled';
+      })));
     }).catch(() => {});
   };
 
@@ -124,9 +133,34 @@ export default function BarPage() {
     reload();
   };
 
-  const completeOrder = async (orderId: number) => {
-    await Orders.update(orderId, { status: 'served' });
+  const completeOrder = async (orderId: number, station: 'kitchen' | 'bar') => {
+    const order = orders.find((o) => o.id === orderId);
+    if (!order) return;
+    const stationItems = order.items.filter((i) => (i.station ?? 'kitchen') === station || (i.station ?? 'kitchen') === 'both');
+    for (const item of stationItems) {
+      if (item.status !== 'served' && item.status !== 'cancelled') {
+        await Orders.update(orderId, { item_id: item.id, item_status: 'served' });
+      }
+    }
     reload();
+  };
+
+  const reprint = async (orderId: number) => {
+    setReprintingId(orderId);
+    try {
+      const res = await Orders.printTicket(orderId);
+      setSnack({
+        msg: res.ok
+          ? `Ticket reprinted · ${res.bytes_written} bytes`
+          : `Reprint failed · ${res.error ?? 'unknown error'}`,
+        severity: res.ok ? 'success' : 'error',
+      });
+    } catch (e: any) {
+      const detail = e?.response?.data?.detail ?? e?.message ?? 'Reprint request failed';
+      setSnack({ msg: typeof detail === 'string' ? detail : JSON.stringify(detail), severity: 'error' });
+    } finally {
+      setReprintingId(null);
+    }
   };
 
   return (
@@ -202,7 +236,7 @@ export default function BarPage() {
           const statusColor =
             o.status === 'ready' ? 'success.main' :
             o.status === 'preparing' ? 'warning.main' :
-            BAR_COLOR;
+            'primary.main';
           return (
             <Paper
               key={o.id}
@@ -381,20 +415,39 @@ export default function BarPage() {
                  </Paper>
                 ))}
              </Stack>
-              <Button
-                fullWidth
-                variant="contained"
-                onClick={() => completeOrder(o.id)}
-                size="large"
-                startIcon={<CheckCircleIcon />}
-                sx={{
-                  mt: 2, borderRadius: RADIUS, minHeight: 52, fontWeight: 700,
-                  bgcolor: BAR_COLOR, '&:hover': { bgcolor: '#0a7d9e', boxShadow: 'none' },
-                  boxShadow: 'none',
-                }}
-              >
-                Mark All Served
-             </Button>
+              <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
+                <Button
+                  fullWidth
+                  variant="contained"
+                  onClick={() => completeOrder(o.id, 'bar')}
+                  size="large"
+                  startIcon={<CheckCircleIcon />}
+                  sx={{
+                    flex: 1.5,
+                    borderRadius: RADIUS, minHeight: 52, fontWeight: 700,
+                    bgcolor: 'primary.main', '&:hover': { bgcolor: 'primary.main', filter: 'brightness(0.92)' },
+                  }}
+                >
+                  Mark All Served
+                </Button>
+                <Button
+                  variant="contained"
+                  size="large"
+                  startIcon={reprintingId === o.id
+                    ? <CircularProgress size={18} sx={{ color: 'common.white' }} />
+                    : <PrintOutlinedIcon />}
+                  disabled={reprintingId === o.id}
+                  onClick={() => reprint(o.id)}
+                  sx={{
+                    flex: 1,
+                    borderRadius: RADIUS, minHeight: 52, fontWeight: 700,
+                    bgcolor: 'primary.main',
+                    '&:hover': { bgcolor: 'primary.main', filter: 'brightness(0.92)' },
+                  }}
+                >
+                  {reprintingId === o.id ? 'Reprinting…' : 'Reprint'}
+                </Button>
+              </Box>
            </Paper>
           );
         })}

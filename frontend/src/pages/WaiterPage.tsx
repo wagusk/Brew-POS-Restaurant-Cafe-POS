@@ -15,10 +15,10 @@ import { ws } from '../lib/ws';
 import type { Order, Table } from '../types';
 
 const SHAPE = {
-  tile: 6,
-  button: 4,
-  chip: 4,
-  dialog: 8,
+  tile: 12,
+  button: 12,
+  chip: 12,
+  dialog: 12,
 };
 
 type TableStatus = 'empty' | 'openbill';

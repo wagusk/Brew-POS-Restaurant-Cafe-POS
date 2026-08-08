@@ -75,7 +75,7 @@ export interface OrderItem {
   status: string;
   notes: string;
   sent_at: string | null;
-  station?: 'kitchen' | 'bar';  // routing hint from M14.7 — defaults to kitchen on legacy rows
+  station?: 'kitchen' | 'bar' | 'both';  // routing hint from M14.7 — defaults to kitchen on legacy rows
   modifiers: OrderItemMod[];
 }
 

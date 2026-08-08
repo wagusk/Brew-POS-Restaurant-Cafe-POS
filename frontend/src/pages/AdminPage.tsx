@@ -47,11 +47,11 @@ import type { AdminCategory, AdminProduct, AdminTable, AdminUser } from '../lib/
 // the 12px baseline and admin reads as a "control panel" workspace.
 // ─────────────────────────────────────────────────────────────────────
 const SHAPE = {
-  card: 6,        // tighter card corners
-  button: 4,      // crisp button corners
-  chip: 4,        // squared chip
-  iconBtn: 4,     // squared icon button
-  dialog: 8,      // sharp dialog corners
+  card: 12,
+  button: 12,
+  chip: 12,
+  iconBtn: 12,
+  dialog: 12,
 };
 
 // ── Main menu color codes ────────────────────────────────────────────
@@ -860,7 +860,7 @@ function CategoryDialog({ open, initial, onClose, onSave }: {
                 type="color"
                 value={color}
                 onChange={(e) => setColor(e.target.value)}
-                style={{ width: 48, height: 48, border: 'none', borderRadius: 6, cursor: 'pointer', background: 'transparent' }}
+                style={{ width: 48, height: 48, border: 'none', borderRadius: 12, cursor: 'pointer', background: 'transparent' }}
               />
               <TextField value={color} onChange={(e) => setColor(e.target.value)} size="small" sx={{ flex: 1 }} placeholder="#rrggbb" />
               <Box sx={{ width: 48, height: 48, borderRadius: `${SHAPE.button}px`, bgcolor: color, border: '1px solid', borderColor: 'border.default' }} />
@@ -1687,6 +1687,106 @@ function CategoryRow({
   );
 }
 
+function RoleRow({
+  label, color, count, active, onSelect, onEdit, onDelete, iconBtnShape,
+}: {
+  label: string;
+  color: string;
+  count: number;
+  active: boolean;
+  onSelect: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
+  iconBtnShape: number;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const canDelete = count > 0;
+  return (
+    <Box
+      role="button"
+      tabIndex={0}
+      onClick={onSelect}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onSelect(); }}
+      sx={{
+        position: 'relative',
+        px: 1.75,
+        py: 1.25,
+        minHeight: 56,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 1.5,
+        cursor: 'pointer',
+        borderBottom: '1px solid',
+        borderColor: 'border.soft',
+        bgcolor: active ? `${color}14` : 'transparent',
+        borderLeft: '3px solid',
+        borderLeftColor: active ? color : 'transparent',
+        transition: 'background-color 0.1s',
+        '&:hover': { bgcolor: active ? `${color}1f` : 'surface.muted' },
+        '&:focus-visible': { outline: `2px solid ${color}`, outlineOffset: -2 },
+      }}
+    >
+      <Box
+        sx={{
+          width: 32, height: 32,
+          borderRadius: `${iconBtnShape}px`,
+          bgcolor: active ? color : 'surface.muted',
+          color: active ? '#fff' : color,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexShrink: 0,
+          fontWeight: 700, fontSize: '0.95rem',
+        }}
+      >
+        {label.charAt(0).toUpperCase()}
+      </Box>
+      <Box sx={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+        <Typography sx={{ fontWeight: active ? 700 : 600, lineHeight: 1.2, color: 'text.primary', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {label}
+        </Typography>
+        <Typography variant="caption" sx={{ display: 'block', color: active ? color : 'text.secondary', fontWeight: 600 }}>
+          {count} user{count === 1 ? '' : 's'}
+        </Typography>
+      </Box>
+      {(hovered || active) && (
+        <Box sx={{ display: 'flex', gap: 0.25, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+          <Tooltip title="Edit user">
+            <IconButton
+              size="small"
+              onClick={() => onEdit?.()}
+              sx={{
+                bgcolor: 'rgba(43, 108, 255, 0.12)', color: '#2b6cff',
+                borderRadius: `${iconBtnShape}px`,
+                '&:hover': { bgcolor: 'rgba(43, 108, 255, 0.22)' },
+              }}
+            >
+              <EditIcon sx={{ fontSize: 16 }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title={canDelete ? 'Delete user' : `No users in this role to delete`}>
+            <span>
+              <IconButton
+                size="small"
+                disabled={!canDelete}
+                onClick={() => onDelete?.()}
+                sx={{
+                  bgcolor: 'rgba(216, 69, 60, 0.12)', color: '#d8453c',
+                  borderRadius: `${iconBtnShape}px`,
+                  '&:hover': { bgcolor: 'rgba(216, 69, 60, 0.22)' },
+                  '&.Mui-disabled': { opacity: 0.35 },
+                }}
+              >
+                <DeleteIcon sx={{ fontSize: 16 }} />
+              </IconButton>
+            </span>
+          </Tooltip>
+        </Box>
+      )}
+    </Box>
+  );
+}
+
 function TableDialog({ open, initial, onClose, onSave }: {
   open: boolean;
   initial?: AdminTable;
@@ -1790,7 +1890,7 @@ function UsersWorkspace({ color }: { color: string }) {
 
   return (
     <>
-      {/* COLUMN 2 — role filter (like cashier's category chips) */}
+      {/* COLUMN 2 — role filter with New button in header, Edit/Delete per row */}
       <Paper
         square
         sx={{
@@ -1803,20 +1903,41 @@ function UsersWorkspace({ color }: { color: string }) {
           borderRadius: 0,
         }}
       >
-        <ColumnHeader title="ROLE FILTER" color={color} count={ROLE_LIST.length} />
+        <ColumnHeader
+          title="ROLE"
+          color={color}
+          count={ROLE_LIST.length}
+          action={
+            <Button
+              size="small"
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => setCreating(true)}
+              sx={{
+                bgcolor: color, '&:hover': { bgcolor: color, filter: 'brightness(0.9)' },
+                borderRadius: `${SHAPE.button}px`,
+                minHeight: 36, fontWeight: 700, px: 1.25,
+              }}
+            >
+              New
+            </Button>
+          }
+        />
         <Box sx={{ flex: 1, overflowY: 'auto' }}>
           {ROLE_LIST.map((r) => {
             const count = r.key === 'all' ? items.length : items.filter((u) => u.role === r.key).length;
+            const isActive = filterRole === r.key;
             return (
-              <ListItemButton
+              <RoleRow
                 key={r.key}
-                active={filterRole === r.key}
-                color={r.color}
                 label={r.label}
-                sublabel={`${count} user${count === 1 ? '' : 's'}`}
-                onClick={() => { setFilterRole(r.key); setSelectedId(null); }}
-                accent={filterRole === r.key}
-                leading={<PeopleIcon />}
+                color={r.color}
+                count={count}
+                active={isActive}
+                onSelect={() => { setFilterRole(r.key); setSelectedId(null); }}
+                onEdit={() => selected && setEditing(selected)}
+                onDelete={() => selected && remove(selected.id)}
+                iconBtnShape={SHAPE.iconBtn}
               />
             );
           })}
@@ -1842,21 +1963,6 @@ function UsersWorkspace({ color }: { color: string }) {
           title={filterRole === 'all' ? 'ALL USERS' : `${filterRole.toUpperCase()}S`}
           color={filterRole === 'all' ? color : roleColor(filterRole)}
           count={filtered.length}
-          action={
-            <Button
-              size="small"
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={() => setCreating(true)}
-              sx={{
-                bgcolor: color, '&:hover': { bgcolor: color, filter: 'brightness(0.9)' },
-                borderRadius: `${SHAPE.button}px`,
-                minHeight: 36, fontWeight: 700, px: 1.25,
-              }}
-            >
-              New
-            </Button>
-          }
         />
         <Box sx={{ p: 1.5, borderBottom: '1px solid', borderColor: 'border.default' }}>
           <TextField
@@ -1896,40 +2002,7 @@ function UsersWorkspace({ color }: { color: string }) {
 
       {/* COLUMN 4 — detail */}
       <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <ColumnHeader
-          title="DETAIL"
-          color={color}
-          action={selected && (
-            <Box sx={{ display: 'flex', gap: 0.5 }}>
-              <Tooltip title="Edit">
-                <IconButton
-                  size="small"
-                  onClick={() => setEditing(selected)}
-                  sx={{
-                    bgcolor: 'rgba(43, 108, 255, 0.12)', color: '#2b6cff',
-                    borderRadius: `${SHAPE.iconBtn}px`,
-                    '&:hover': { bgcolor: 'rgba(43, 108, 255, 0.22)' },
-                  }}
-                >
-                  <EditIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-              <Tooltip title="Delete">
-                <IconButton
-                  size="small"
-                  onClick={() => remove(selected.id)}
-                  sx={{
-                    bgcolor: 'rgba(216, 69, 60, 0.12)', color: '#d8453c',
-                    borderRadius: `${SHAPE.iconBtn}px`,
-                    '&:hover': { bgcolor: 'rgba(216, 69, 60, 0.22)' },
-                  }}
-                >
-                  <DeleteIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            </Box>
-          )}
-        />
+        <ColumnHeader title="DETAIL" color={color} />
         {!selected ? (
           <ColumnEmpty message="No user selected" />
         ) : (

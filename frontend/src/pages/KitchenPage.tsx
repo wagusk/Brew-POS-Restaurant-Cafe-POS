@@ -42,7 +42,7 @@ type RejectTarget =
 
 // Unified 8px rounded corners across cards, buttons, chips — matches Shell
 // menu bar and other pages.
-const RADIUS = '8px';
+const RADIUS = '12px';
 
 export default function KitchenPage() {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -79,8 +79,12 @@ export default function KitchenPage() {
     // station=kitchen returns orders that have at least one kitchen
     // item OR a "both" item. The item filter below strips bar-only lines
     // so the kitchen sees only what it needs to cook.
+    // Filter: keep orders that have at least one unserved kitchen item.
     Orders.list(undefined, 'kitchen').then((all) => {
-      setOrders(all.filter((o) => ['open', 'accepted', 'preparing', 'ready'].includes(o.status)));
+      setOrders(all.filter((o) => o.items.some((i) => {
+        const s = i.station ?? 'kitchen';
+        return (s === 'kitchen' || s === 'both') && i.status !== 'served' && i.status !== 'cancelled';
+      })));
     }).catch(() => {});
   };
 
@@ -142,8 +146,15 @@ export default function KitchenPage() {
     reload();
   };
 
-  const completeOrder = async (orderId: number) => {
-    await Orders.update(orderId, { status: 'served' });
+  const completeOrder = async (orderId: number, station: 'kitchen' | 'bar') => {
+    const order = orders.find((o) => o.id === orderId);
+    if (!order) return;
+    const stationItems = order.items.filter((i) => (i.station ?? 'kitchen') === station || (i.station ?? 'kitchen') === 'both');
+    for (const item of stationItems) {
+      if (item.status !== 'served' && item.status !== 'cancelled') {
+        await Orders.update(orderId, { item_id: item.id, item_status: 'served' });
+      }
+    }
     reload();
   };
 
@@ -371,7 +382,7 @@ export default function KitchenPage() {
                   color="primary"
                   size="large"
                   startIcon={<CheckCircleIcon />}
-                  onClick={() => completeOrder(o.id)}
+                  onClick={() => completeOrder(o.id, 'kitchen')}
                   sx={{
                     flex: 1.5,
                     borderRadius: RADIUS, minHeight: 52, fontWeight: 700,

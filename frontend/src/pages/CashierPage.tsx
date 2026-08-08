@@ -21,11 +21,11 @@ import { ws } from '../lib/ws';
 import type { Order, Table } from '../types';
 
 const SHAPE = {
-  card: 6,
-  button: 4,
-  chip: 4,
-  dialog: 8,
-  tile: 6,
+  card: 12,
+  button: 12,
+  chip: 12,
+  dialog: 12,
+  tile: 12,
 };
 
 type PaymentMethod = 'cash' | 'card' | 'mobile';

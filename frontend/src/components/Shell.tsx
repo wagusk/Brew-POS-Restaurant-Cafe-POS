@@ -83,7 +83,7 @@ export default function Shell({ children }: { children: ReactNode }) {
             sx={{
               width: 36,
               height: 36,
-              borderRadius: 2,
+              borderRadius: '12px',
               bgcolor: 'role.cashier',
               color: 'common.white',
               display: 'flex',
@@ -128,7 +128,7 @@ export default function Shell({ children }: { children: ReactNode }) {
                 minHeight: 40,
                 px: 2,
                 fontWeight: 700,
-                borderRadius: '8px',
+                borderRadius: '12px',
                 boxShadow: 'none',
                 '&:hover': { bgcolor: '#b1332c', boxShadow: 'none' },
               }}
@@ -175,7 +175,7 @@ export default function Shell({ children }: { children: ReactNode }) {
                 minHeight: 56,
                 px: 2,
                 fontWeight: 700,
-                borderRadius: '8px',
+                borderRadius: '12px',
                 textTransform: 'none',
                 boxShadow: 'none',
                 bgcolor: active ? MENU_ACTIVE_BG : MENU_IDLE_BG,

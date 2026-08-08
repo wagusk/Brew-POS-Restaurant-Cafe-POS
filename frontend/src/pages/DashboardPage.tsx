@@ -35,9 +35,9 @@ export default function DashboardPage() {
         {available.map((page) => {
           const Icon = page.icon;
           return (
-            <Paper key={page.path} sx={{ p: 2, borderRadius: '6px', borderTop: `6px solid ${page.color}` }}>
+            <Paper key={page.path} sx={{ p: 2, borderRadius: '12px', borderTop: `6px solid ${page.color}` }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
-                <Box sx={{ width: 48, height: 48, bgcolor: page.color, color: 'white', display: 'grid', placeItems: 'center', borderRadius: '4px' }}>
+                <Box sx={{ width: 48, height: 48, bgcolor: page.color, color: 'white', display: 'grid', placeItems: 'center', borderRadius: '12px' }}>
                   <Icon />
                 </Box>
                 <Box>
@@ -45,7 +45,7 @@ export default function DashboardPage() {
                   <Typography variant="body2" color="text.secondary">{page.description}</Typography>
                 </Box>
               </Box>
-              <Button fullWidth variant="contained" onClick={() => nav(page.path)} sx={{ bgcolor: page.color, minHeight: 48, borderRadius: '4px', '&:hover': { bgcolor: page.color, filter: 'brightness(.9)' } }}>
+              <Button fullWidth variant="contained" onClick={() => nav(page.path)} sx={{ bgcolor: page.color, minHeight: 48, borderRadius: '12px', '&:hover': { bgcolor: page.color, filter: 'brightness(.9)' } }}>
                 Open {page.label}
               </Button>
             </Paper>

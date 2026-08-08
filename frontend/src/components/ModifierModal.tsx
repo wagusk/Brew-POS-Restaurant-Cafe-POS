@@ -46,7 +46,7 @@ export default function ModifierModal({ product, open, onClose, onAdd }: Props) 
       onClose={onClose}
       maxWidth="sm"
       fullWidth
-      PaperProps={{ sx: { borderRadius: 3 } }}
+      PaperProps={{ sx: { borderRadius: '12px' } }}
     >
       <DialogTitle sx={{ fontWeight: 700, pb: 0.5 }}>{product.name}</DialogTitle>
       <DialogContent dividers sx={{ borderColor: 'border.default' }}>
@@ -108,7 +108,7 @@ export default function ModifierModal({ product, open, onClose, onAdd }: Props) 
                       m: 0,
                       border: '1px solid',
                       borderColor: 'border.default',
-                      borderRadius: 1.5,
+                      borderRadius: '12px',
                       px: 1.5,
                       mb: 0.75,
                       '&:hover': { borderColor: 'role.cashier' },
@@ -131,7 +131,7 @@ export default function ModifierModal({ product, open, onClose, onAdd }: Props) 
         />
       </DialogContent>
       <DialogActions sx={{ p: 2, gap: 1 }}>
-        <Button onClick={onClose} size="large" color="warning" sx={{ borderRadius: 2 }}>
+        <Button onClick={onClose} size="large" color="warning" sx={{ borderRadius: '12px' }}>
           Cancel
         </Button>
         <Button
@@ -140,7 +140,7 @@ export default function ModifierModal({ product, open, onClose, onAdd }: Props) 
           variant="contained"
           color="primary"
           disabled={!canAdd}
-          sx={{ borderRadius: 2, minWidth: 140 }}
+          sx={{ borderRadius: '12px', minWidth: 140 }}
         >
           Add to cart
         </Button>
