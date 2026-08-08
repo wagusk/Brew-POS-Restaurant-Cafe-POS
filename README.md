@@ -14,19 +14,23 @@ Then open `http://localhost:8000` on any terminal.
 
 ## Features
 
-- **Multi-terminal sync** — Cashier and Waiter terminals see the same orders in real time via WebSocket.
-- **Touch-friendly UI** — Big buttons (48–64px), grid layout, rounded corners, dark MUI theme.
-- **Roles** — `admin`, `cashier`, `waiter`, `kitchen` — each with a dedicated screen.
-- **PIN login** — Tap a 4-digit PIN, no usernames/passwords needed.
+- **Multi-terminal sync** — Cashier, Waiter, Kitchen, and Bar terminals see the same orders in real time via WebSocket.
+- **Touch-friendly UI** — Big buttons (48–64px), grid layout, 12px rounded corners, light MUI theme.
+- **Roles** — `admin`, `master`, `cashier`, `waiter`, `kitchen`, `bar` — each with a dedicated screen.
+- **PIN login** — Tap a 4–8 digit PIN, no usernames/passwords needed.
 - **Modifiers** — Required/single-select & optional/multi-select groups per product.
-- **Tables** — 8 pre-seeded tables; chip-style picker; supports take-away.
+- **Tables** — Pre-seeded tables; chip-style picker; supports take-away.
 - **Payments** — Cash / card / mobile. Cash handles tendered + change.
 - **Kitchen Display** — Live ticket board with one-tap state changes (start → ready → served).
+- **Bar Display** — Dedicated drink station with independent item tracking.
+- **Station-isolated serving** — Kitchen marking served doesn't affect bar display, and vice versa.
 - **Receipts** — Modal on checkout with order number; print-friendly.
 - **Stats** — Today orders, revenue, average ticket, open tickets.
+- **Reports** — Sales summary, category breakdown, item sales, payment methods, bill history.
 - **Single-file SQLite** — `backend/brewpos.db`. Portable, no external DB.
-- **No Docker required** — Pure Python + Node +11. Runs anywhere.
-- **Admin Settings page** — `/settings` (admin-only): Products, Tables, Tax, and a unified Database menu (URL editor + Reload / Reset / Restore / Export / Import operations stacked under one tile).
+- **No Docker required** — Pure Python + Node. Runs anywhere.
+- **Admin Panel** — Full CRUD for users, products, categories, tables, tax, discounts, printer config.
+- **Database management** — URL editor, reload engine, reset & seed, export/import backup.
 
 ---
 
@@ -55,10 +59,11 @@ Pick any role and enter the PIN:
 
 | Role | PIN | What they see |
 |------|-----|---------------|
-| Admin | `9999` | Dashboard with live stats |
-| Cashier | `1111` | Order-taking screen with menu, cart, modifiers |
+| Admin | `9999` | Dashboard with live stats, reports, user/product/table management |
+| Cashier | `1111` | Order-taking screen with menu, cart, modifiers, bill history |
 | Waiter | `2222` | Floor-plan view, take orders, send to kitchen |
 | Kitchen | `3333` | Live ticket board, mark items ready/served |
+| Bar | `3333` | Live drink ticket board, independent from kitchen |
 
 ### 3. Place an order
 
@@ -68,13 +73,16 @@ Pick any role and enter the PIN:
 4. Tap a table chip (T1–T8) or "Takeaway".
 5. Tap **Charge $X.XX** — receipt appears.
 
-The order broadcasts to all connected terminals via WebSocket — open the Kitchen page in another tab and watch it appear.
+The order broadcasts to all connected terminals via WebSocket — open the Kitchen or Bar page in another tab and watch it appear.
 
-### 4. Serve from the kitchen
+### 4. Serve from the kitchen / bar
 
-1. Login as Kitchen (`3333`).
+1. Login as Kitchen (`3333`) or Bar (`3333` — same PIN, different screen).
 2. Orders appear in real time.
 3. Tap **Start** on an item → **Ready** → **Served**.
+4. Or tap **Mark All Served** to complete all items for that station.
+
+Kitchen and Bar operate independently — marking served on one station doesn't affect the other.
 
 ### 5. Wipe & re-seed
 
@@ -106,16 +114,17 @@ Brew-POS/
 │   │   ├── models/__init__.py   # ORM models (User, Product, Order, etc.)
 │   │   ├── schemas/__init__.py  # Pydantic DTOs
 │   │   ├── services/
+│   │   │   ├── __init__.py      # Order lifecycle, status updates, stats
 │   │   │   ├── crud.py          # Generic create/read/update/delete helpers
-│   │   │   ├── tickets.py       # Order ticket lifecycle
+│   │   │   ├── tickets.py       # Ticket building for printing
 │   │   │   ├── printer.py       # Receipt printing dispatch
 │   │   │   └── escpos.py        # ESC/POS command builder
 │   │   ├── api/
 │   │   │   ├── auth.py          # /api/auth/login
 │   │   │   ├── menu.py          # /api/menu, /api/tables
 │   │   │   ├── orders.py        # /api/orders/* (checkout, list, status)
-│   │   │   ├── admin.py         # /api/admin/* (users, reports)
-│   │   │   └── settings.py      # /api/settings/*
+│   │   │   ├── admin.py         # /api/admin/* (users, reports, settings)
+│   │   │   └── settings.py      # /api/admin/settings/*
 │   │   └── ws/
 │   │       ├── __init__.py      # ConnectionManager
 │   │       └── hub.py           # /ws WebSocket route
@@ -154,7 +163,7 @@ Brew-POS/
 │   │   │   ├── api.ts           # Axios + endpoints
 │   │   │   ├── ws.ts            # WebSocket client with reconnect
 │   │   │   └── permissions.ts   # hasPermission(user, perm) helper
-│   │   ├── theme/index.ts       # MUI dark theme
+│   │   ├── theme/index.ts       # MUI light theme
 │   │   ├── types/index.ts       # Shared TS types
 │   │   └── index.css
 │   └── dist/                    # Built bundle (gitignored)
@@ -181,7 +190,7 @@ Brew-POS uses a single FastAPI WebSocket endpoint at `/ws`. Every connected term
 
 1. Backend writes to SQLite.
 2. Backend broadcasts `{"event":"order_created","data":{...}}` to every connected client.
-3. Kitchen + Waiter + Admin pages receive the event, refresh their view.
+3. Kitchen + Bar + Waiter + Admin pages receive the event, refresh their view.
 
 No polling. No page reload. State propagates in milliseconds.
 
@@ -202,7 +211,7 @@ The frontend maintains a single WebSocket with auto-reconnect (5–10s backoff) 
 ### Frontend
 - **Vite 5** — dev server + bundler
 - **React 18 + TypeScript** — UI
-- **MUI v6** — component library (dark theme, rounded corners, large buttons)
+- **MUI v6** — component library (light theme, 12px rounded corners, large buttons)
 - **Redux Toolkit** — auth, cart, menu slices
 - **React Router 6** — role-based routing
 - **Axios** — HTTP with JWT interceptor
@@ -256,21 +265,20 @@ cd backend && python -m app.db.seed
 ### Add a new role
 
 1. Add `role` string in `backend/app/models/__init__.py` (User.role is freeform)
-2. Add a route in `backend/app/api/` 
+2. Add a route in `backend/app/api/`
 3. Add a page in `frontend/src/pages/`
 4. Add a route case in `frontend/src/app/App.tsx`
 
 ### Add a new product
 
-Edit `backend/app/db/seed.py` and re-run the seed, or POST directly:
+Use the Admin panel (Products workspace) or POST directly:
 
 ```bash
-curl -X POST http://localhost:8000/api/menu -H "Authorization: Bearer <token>" \
+curl -X POST http://localhost:8000/api/admin/products \
+  -H "Authorization: Bearer ***" \
   -H "Content-Type: application/json" \
   -d '{"name":"Cortado","price":3.25,"category_id":1}'
 ```
-
-(Currently the menu is read-only via API; the seed is the canonical source. Adding CRUD is straightforward — see TODO below.)
 
 ---
 
@@ -288,7 +296,7 @@ curl http://localhost:8000/api/menu
 
 # Checkout
 curl -X POST http://localhost:8000/api/orders/checkout \
-  -H "Authorization: Bearer <token>" \
+  -H "Authorization: Bearer ***" \
   -H "Content-Type: application/json" \
   -d '{
     "type":"dine_in",
@@ -298,11 +306,11 @@ curl -X POST http://localhost:8000/api/orders/checkout \
     "tendered":20.0
   }'
 
-# Update order status
+# Update item status (station-isolated)
 curl -X PATCH http://localhost:8000/api/orders/1 \
-  -H "Authorization: Bearer <token>" \
+  -H "Authorization: Bearer ***" \
   -H "Content-Type: application/json" \
-  -d '{"status":"served"}'
+  -d '{"item_id":1,"item_status":"served"}'
 ```
 
 Open `http://localhost:8000/docs` for interactive Swagger UI.
@@ -311,16 +319,19 @@ Open `http://localhost:8000/docs` for interactive Swagger UI.
 
 ## Roadmap
 
-**To be added: printing support, report printing, and etc.**
-
-- [ ] Menu CRUD via admin UI
-- [ ] User management via admin UI
-- [ ] Receipt printing (ESC/POS, thermal)
+- [x] Menu CRUD via admin UI
+- [x] User management via admin UI
+- [x] Kitchen + Bar station displays
+- [x] Station-isolated serving
+- [x] Reports (sales, categories, items, payments, bill history)
+- [x] Database management (URL editor, reload, reset, export, import)
+- [x] Discount presets (fixed + percent)
+- [x] Printer configuration (network/USB/dummy)
+- [ ] Receipt printing (ESC/POS, thermal) — config UI done, hardware pending
 - [ ] Inventory deduction on order
 - [ ] Multi-outlet (each terminal = outlet)
 - [ ] Offline mode (sync queue when WS reconnects)
 - [ ] Loyalty / discount codes
-- [ ] Reports (daily, weekly, monthly exports)
 - [ ] Docker image for headless terminal
 - [ ] Card payment integrations (Stripe Terminal)
 
