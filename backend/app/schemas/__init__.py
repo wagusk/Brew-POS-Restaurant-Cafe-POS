@@ -193,6 +193,20 @@ class AppendItemsIn(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Open Bill (M32) — create an empty bill on a table so it shows as "open"
+# before any kitchen items exist. Used by the cashier when they need to
+# start a bill manually.
+# ---------------------------------------------------------------------------
+
+
+class OpenBillIn(BaseModel):
+    table_id: int
+    type: str = "dine_in"
+    customer_name: str = ""
+    notes: str = ""
+
+
+# ---------------------------------------------------------------------------
 # Admin-managed resource CRUD (categories, products, tables, users)
 # ---------------------------------------------------------------------------
 

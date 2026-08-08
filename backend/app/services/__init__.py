@@ -133,6 +133,48 @@ def submit_order(db: Session, payload: CheckoutIn, user: User) -> Order:
     return order
 
 
+def open_bill(db: Session, payload, user: User) -> Order:
+    """Cashier opens an empty bill on a table.
+
+    Creates an order in 'open' status with zero items and zero totals.
+    The table now shows as "open" (blue tile) even before any kitchen
+    items exist. The waiter can later append items to this bill.
+
+    Single-bill-per-table rule: a table that already has an open or
+    accepted bill cannot receive a new one.
+    """
+    if payload.table_id is not None and payload.type == "dine_in":
+        conflict = (
+            db.query(Order)
+            .filter(
+                Order.table_id == payload.table_id,
+                Order.status.in_(("open", "accepted", "preparing", "ready", "served")),
+            )
+            .first()
+        )
+        if conflict:
+            raise ValueError(
+                f"Table {payload.table_id} already has an open bill "
+                f"#{conflict.number}. Open the existing bill to add items."
+            )
+    order = Order(
+        number=_next_order_number(db),
+        table_id=payload.table_id,
+        type=payload.type,
+        customer_name=payload.customer_name,
+        notes=payload.notes,
+        status="open",
+        created_by=user.id,
+        subtotal=0.0,
+        tax=0.0,
+        total=0.0,
+    )
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+    return order
+
+
 def append_items(db: Session, order_id: int, payload) -> Order:
     """Append more items to an existing bill (single-bill-per-table UX).
 

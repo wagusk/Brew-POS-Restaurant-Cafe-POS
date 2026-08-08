@@ -212,6 +212,8 @@ export const Orders = {
     api.post<Order>(`/orders/${id}/cancel`, payload).then((r) => r.data),
   appendItems: (id: number, payload: { items: Array<{ product_id: number; qty: number; modifiers?: number[]; notes?: string }> }) =>
     api.post<Order>(`/orders/${id}/items`, payload).then((r) => r.data),
+  openBill: (payload: { table_id: number; type?: string; customer_name?: string; notes?: string }) =>
+    api.post<Order>('/orders/open-bill', payload).then((r) => r.data),
   stats: () => api.get<Stats>('/orders/_stats/today').then((r) => r.data),
   printTicket: (id: number) =>
     api.post<PrintResult>(`/orders/${id}/print-ticket`, {}).then((r) => r.data),

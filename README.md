@@ -15,21 +15,27 @@ Then open `http://localhost:8000` on any terminal.
 ## Features
 
 - **Multi-terminal sync** — Cashier, Waiter, Kitchen, and Bar terminals see the same orders in real time via WebSocket.
-- **Touch-friendly UI** — Big buttons (48–64px), grid layout, 12px rounded corners, light MUI theme.
+- **Touch-friendly UI** — Big buttons (48–72px), grid layout, 12px rounded corners, light MUI theme.
 - **Roles** — `admin`, `master`, `cashier`, `waiter`, `kitchen`, `bar` — each with a dedicated screen.
 - **PIN login** — Tap a 4–8 digit PIN, no usernames/passwords needed.
 - **Modifiers** — Required/single-select & optional/multi-select groups per product.
-- **Tables** — Pre-seeded tables; chip-style picker; supports take-away.
-- **Payments** — Cash / card / mobile. Cash handles tendered + change.
+- **Tables** — Pre-seeded tables (T1–T8); floor-plan view; blue = has open bill, default = empty.
+- **Payments** — Cash / card / mobile. Cash handles tendered + change with change-due popup.
+- **Open Bill (Cashier)** — Click any empty table → "Open New Bill?" popup → Yes creates an empty bill, tile turns blue. Waiter can then add items.
 - **Kitchen Display** — Live ticket board with one-tap state changes (start → ready → served).
 - **Bar Display** — Dedicated drink station with independent item tracking.
 - **Station-isolated serving** — Kitchen marking served doesn't affect bar display, and vice versa.
-- **Receipts** — Modal on checkout with order number; print-friendly.
+- **Station routing** — Products route to kitchen, bar, or both. Combos appear on both stations.
+- **Single-bill-per-table** — Only one open bill per table. Waiter adds to existing, never duplicates.
+- **Permission-based access** — Granular permissions (order.open, order.close, kitchen.serve, etc.).
+- **Dynamic roles** — Admin can create/edit roles with custom permissions.
+- **Receipts** — Reprint button on paid bills; ESC/POS printer support.
 - **Stats** — Today orders, revenue, average ticket, open tickets.
 - **Reports** — Sales summary, category breakdown, item sales, payment methods, bill history.
+- **Discounts** — Fixed or percent presets configured by admin; cashier applies at checkout.
 - **Single-file SQLite** — `backend/brewpos.db`. Portable, no external DB.
 - **No Docker required** — Pure Python + Node. Runs anywhere.
-- **Admin Panel** — Full CRUD for users, products, categories, tables, tax, discounts, printer config.
+- **Admin Panel** — Full CRUD for users, products, categories, tables, roles, tax, discounts, printer config.
 - **Database management** — URL editor, reload engine, reset & seed, export/import backup.
 
 ---
@@ -48,7 +54,7 @@ The script will:
 2. Install backend deps (`requirements.txt`)
 3. Install frontend deps (`npm install` on first run)
 4. Build the frontend (`vite build`)
-5. Seed the database (4 users, 6 categories, 26 products, 8 tables) on first run
+5. Seed the database (4 users, 7 categories, 28 products, 8 tables) on first run
 6. Launch the backend on `http://0.0.0.0:8000`
 
 Open `http://localhost:8000` in a browser. Done.
@@ -59,23 +65,30 @@ Pick any role and enter the PIN:
 
 | Role | PIN | What they see |
 |------|-----|---------------|
-| Admin | `9999` | Dashboard with live stats, reports, user/product/table management |
-| Cashier | `1111` | Order-taking screen with menu, cart, modifiers, bill history |
-| Waiter | `2222` | Floor-plan view, take orders, send to kitchen |
+| Admin | `9999` | Dashboard with live stats, reports, user/product/table/role management |
+| Cashier | `1111` | Floor plan + bill view. Open bills, pay, reprint receipts |
+| Waiter | `2222` | Floor-plan view, take orders, add to existing bills, send to kitchen |
 | Kitchen | `3333` | Live ticket board, mark items ready/served |
 | Bar | `3333` | Live drink ticket board, independent from kitchen |
 
-### 3. Place an order
+### 3. Cashier opens a new bill
 
 1. Login as Cashier (`1111`).
-2. Browse the menu → tap a product.
-3. If it has modifiers (e.g. Espresso → Shot + Milk), pick them.
-4. Tap a table chip (T1–T8) or "Takeaway".
-5. Tap **Charge $X.XX** — receipt appears.
+2. Click any **empty** table (gray) on the left floor plan.
+3. Popup: "Open New Bill?" → tap **Yes**.
+4. Table turns blue — bill is open with zero items.
+5. Waiter can now add items to this bill.
 
-The order broadcasts to all connected terminals via WebSocket — open the Kitchen or Bar page in another tab and watch it appear.
+### 4. Place an order (Waiter)
 
-### 4. Serve from the kitchen / bar
+1. Login as Waiter (`2222`).
+2. Click an empty table → menu input popup.
+3. Pick products, modifiers, quantity.
+4. Tap **Send to Kitchen** — order broadcasts to kitchen/bar displays.
+
+Or click a blue table (open bill) → confirm → add more items to the existing bill.
+
+### 5. Serve from the kitchen / bar
 
 1. Login as Kitchen (`3333`) or Bar (`3333` — same PIN, different screen).
 2. Orders appear in real time.
@@ -84,12 +97,38 @@ The order broadcasts to all connected terminals via WebSocket — open the Kitch
 
 Kitchen and Bar operate independently — marking served on one station doesn't affect the other.
 
-### 5. Wipe & re-seed
+### 6. Close a bill (Cashier)
+
+1. Login as Cashier (`1111`).
+2. Click a blue table → bill appears on the right.
+3. Tap **Pay Bill $X.XX** → choose method + tendered → Confirm.
+4. For cash: if tendered > total, change-due popup shows the amount.
+
+### 7. Wipe & re-seed
 
 ```bash
 rm backend/brewpos.db
 ./run.sh     # auto re-seeds on first run
 ```
+
+---
+
+## Order Flow
+
+```
+Waiter                    Kitchen / Bar              Cashier
+  │                           │                         │
+  ├─ Open Bill (or new) ──────┤                         │
+  ├─ Add items ──────────────►│                         │
+  ├─ Send to Kitchen ────────►│                         │
+  │                           ├─ Start → Ready → Served │
+  │                           │                         │
+  │                           ├─ (all items served) ──►├─ Auto-bump to "served"
+  │                           │                         ├─ Pay Bill → paid
+  │                           │                         └─ Receipt
+```
+
+**Cashier can also open a bill first** (empty), then the waiter adds items to it.
 
 ---
 
@@ -101,6 +140,7 @@ Brew-POS/
 ├── requirements.txt             # Python deps
 ├── LICENSE                      # Business Source License 1.1
 ├── PROGRESS.md                  # Build progress log
+├── README.md                    # This file
 ├── backend/
 │   ├── app/
 │   │   ├── main.py              # FastAPI entry; serves API + static frontend
@@ -111,10 +151,10 @@ Brew-POS/
 │   │   ├── db/
 │   │   │   ├── session.py       # SQLAlchemy engine
 │   │   │   └── seed.py          # Demo data seeder
-│   │   ├── models/__init__.py   # ORM models (User, Product, Order, etc.)
+│   │   ├── models/__init__.py   # ORM models (User, Product, Order, Role, etc.)
 │   │   ├── schemas/__init__.py  # Pydantic DTOs
 │   │   ├── services/
-│   │   │   ├── __init__.py      # Order lifecycle, status updates, stats
+│   │   │   ├── __init__.py      # Order lifecycle, status updates, stats, open_bill
 │   │   │   ├── crud.py          # Generic create/read/update/delete helpers
 │   │   │   ├── tickets.py       # Ticket building for printing
 │   │   │   ├── printer.py       # Receipt printing dispatch
@@ -122,8 +162,8 @@ Brew-POS/
 │   │   ├── api/
 │   │   │   ├── auth.py          # /api/auth/login
 │   │   │   ├── menu.py          # /api/menu, /api/tables
-│   │   │   ├── orders.py        # /api/orders/* (checkout, list, status)
-│   │   │   ├── admin.py         # /api/admin/* (users, reports, settings)
+│   │   │   ├── orders.py        # /api/orders/* (checkout, open-bill, list, status)
+│   │   │   ├── admin.py         # /api/admin/* (users, reports, settings, roles)
 │   │   │   └── settings.py      # /api/admin/settings/*
 │   │   └── ws/
 │   │       ├── __init__.py      # ConnectionManager
@@ -294,7 +334,13 @@ curl -X POST http://localhost:8000/api/auth/login \
 # Get menu
 curl http://localhost:8000/api/menu
 
-# Checkout
+# Open a new bill on a table (cashier)
+curl -X POST http://localhost:8000/api/orders/open-bill \
+  -H "Authorization: Bearer ***" \
+  -H "Content-Type: application/json" \
+  -d '{"table_id":3,"type":"dine_in"}'
+
+# Checkout (waiter sends order with items)
 curl -X POST http://localhost:8000/api/orders/checkout \
   -H "Authorization: Bearer ***" \
   -H "Content-Type: application/json" \
@@ -317,16 +363,41 @@ Open `http://localhost:8000/docs` for interactive Swagger UI.
 
 ---
 
+## Status flow
+
+`Order.status`:
+```
+open → accepted → preparing → ready → served → paid
+   ↓                              ↓
+  cancelled                     void
+```
+
+`OrderItem.status`:
+```
+new → preparing → ready → served
+   ↓
+  cancelled
+```
+
+The cashier can **open a bill first** (empty, status=`open`), then the waiter adds items. Once all items are served, the order auto-bumps to `served`, then the cashier closes it → `paid`.
+
+---
+
 ## Roadmap
 
 - [x] Menu CRUD via admin UI
 - [x] User management via admin UI
 - [x] Kitchen + Bar station displays
 - [x] Station-isolated serving
+- [x] Station routing (kitchen/bar/both)
 - [x] Reports (sales, categories, items, payments, bill history)
 - [x] Database management (URL editor, reload, reset, export, import)
 - [x] Discount presets (fixed + percent)
 - [x] Printer configuration (network/USB/dummy)
+- [x] Permission-based access control
+- [x] Dynamic role management
+- [x] Single-bill-per-table enforcement
+- [x] Cashier "Open Bill" popup
 - [ ] Receipt printing (ESC/POS, thermal) — config UI done, hardware pending
 - [ ] Inventory deduction on order
 - [ ] Multi-outlet (each terminal = outlet)

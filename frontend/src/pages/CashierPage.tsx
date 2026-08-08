@@ -10,6 +10,7 @@ import PhoneIphoneIcon from '@mui/icons-material/PhoneIphone';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
 import BackspaceIcon from '@mui/icons-material/Backspace';
+import AddCircleIcon from '@mui/icons-material/AddCircleOutline';
 import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
 import HomeWorkIcon from '@mui/icons-material/HomeWork';
 import PrintOutlinedIcon from '@mui/icons-material/PrintOutlined';
@@ -50,6 +51,11 @@ export default function CashierPage() {
   // internal reprint state so the sticky "Print" button and the header
   // IconButton can both run independently without disabling each other.
   const [reprintingBill, setReprintingBill] = useState(false);
+  // M32 — "Open Bill" confirmation popup. `openingBill` holds the table
+  // that was clicked when it has no open bill; `opening` tracks whether
+  // the API call is in flight so the popup buttons can be disabled.
+  const [openingBill, setOpeningBill] = useState<Table | null>(null);
+  const [opening, setOpening] = useState(false);
   // M22 — Change Due popup. Opens after a successful cash close when
   // tendered > total, so the cashier can hand the change to the customer
   // and tap OK to acknowledge. Single OK button.
@@ -207,7 +213,13 @@ export default function CashierPage() {
                 return (
                   <Paper
                     key={t.id}
-                    onClick={() => setSelectedTableId((cur) => (cur === t.id ? null : t.id))}
+                    onClick={() => {
+                      if (isOpenBill) {
+                        setSelectedTableId((cur) => (cur === t.id ? null : t.id));
+                      } else {
+                        setOpeningBill(t);
+                      }
+                    }}
                     sx={{
                       p: 1.5,
                       cursor: 'pointer',
@@ -425,6 +437,59 @@ export default function CashierPage() {
           )}
         </Box>
       </Box>
+
+      {/* ─── M32 — Open Bill confirmation popup ─── */}
+      <Dialog
+        open={!!openingBill}
+        onClose={() => { if (!opening) setOpeningBill(null); }}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: `${SHAPE.dialog}px`, minWidth: 480 } }}
+      >
+        <DialogTitle sx={{ fontWeight: 800, pt: 3, pb: 1.5, fontSize: '1.5rem', textAlign: 'center' }}>
+          Open New Bill?
+        </DialogTitle>
+        <DialogActions sx={{ p: 3, gap: 2 }}>
+          <Button
+            onClick={() => setOpeningBill(null)}
+            variant="contained"
+            color="warning"
+            size="large"
+            disabled={opening}
+            sx={{ borderRadius: `${SHAPE.button}px`, minHeight: 72, flex: 1, fontWeight: 700, fontSize: '1.1rem' }}
+          >
+            No
+          </Button>
+          <Button
+            onClick={async () => {
+              if (!openingBill) return;
+              setOpening(true);
+              try {
+                await Orders.openBill({
+                  table_id: openingBill.id,
+                  type: 'dine_in',
+                  customer_name: '',
+                  notes: 'Opened by cashier',
+                });
+                setOpeningBill(null);
+                reload();
+              } catch (e: any) {
+                const detail = e?.response?.data?.detail ?? e?.message ?? 'Failed to open bill';
+                setSnack({ msg: typeof detail === 'string' ? detail : JSON.stringify(detail), severity: 'error' });
+              } finally {
+                setOpening(false);
+              }
+            }}
+            variant="contained"
+            size="large"
+            startIcon={opening ? <CircularProgress size={16} sx={{ color: 'common.white' }} /> : <AddCircleIcon />}
+            disabled={opening}
+            sx={{ borderRadius: `${SHAPE.button}px`, minHeight: 72, flex: 1, fontWeight: 700, fontSize: '1.1rem' }}
+          >
+            {opening ? 'Opening…' : 'Yes'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* ─── Payment dialog (popup with big Confirm/Cancel buttons) ─── */}
       <PaymentDialog

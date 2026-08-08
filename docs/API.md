@@ -101,6 +101,27 @@ Returns the tables.
 
 ## Orders
 
+### POST /api/orders/open-bill
+
+Open an empty bill on a table. The order is created with status `open`, zero items, and zero totals. The table now shows as "open" (blue tile) before any kitchen items exist.
+
+**Request:**
+```json
+{
+  "table_id": 3,
+  "type": "dine_in",
+  "customer_name": "",
+  "notes": "Opened by cashier"
+}
+```
+
+**Response 200:** OrderOut with `status: "open"`, `items: []`, `total: 0.0`. Also broadcasts `order_created` over WebSocket.
+
+**Errors:**
+- `400 Bad Request` — table already has an open bill
+
+---
+
 ### POST /api/orders/checkout
 
 Create a new order. The backend computes subtotal, tax (10%), and total from the items + modifiers.

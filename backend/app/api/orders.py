@@ -6,14 +6,14 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.schemas import (
-    CheckoutIn, OrderOut, OrderStatusIn, StatsOut, CloseOrderIn, CancelOrderIn,
+    CheckoutIn, OrderOut, OrderStatusIn, StatsOut, CloseOrderIn, CancelOrderIn, OpenBillIn,
 )
 from app.models import User, Order
 from app.core.security import current_user, require_role, require_permission
 from app.core.permissions import can
 from app.services import (
     submit_order, list_orders, get_order, update_order_status, to_order_out,
-    today_stats, accept_order, close_order, cancel_order, append_items,
+    today_stats, accept_order, close_order, cancel_order, append_items, open_bill,
 )
 from app.schemas import AppendItemsIn
 from app.ws import manager
@@ -76,6 +76,18 @@ async def checkout(payload: CheckoutIn, db: Session = Depends(get_db), user: Use
     out = to_order_out(order)
     await manager.broadcast("order_created", out.model_dump())
     _fire_kitchen_ticket(db, order)
+    return out
+
+
+@router.post("/open-bill", response_model=OrderOut)
+async def open_bill_endpoint(payload: OpenBillIn, db: Session = Depends(get_db), user: User = Depends(require_permission("order.open"))):
+    """Open an empty bill on a table so it shows as open (blue tile) before any items exist."""
+    try:
+        order = open_bill(db, payload, user)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    out = to_order_out(order)
+    await manager.broadcast("order_created", out.model_dump())
     return out
 
 
