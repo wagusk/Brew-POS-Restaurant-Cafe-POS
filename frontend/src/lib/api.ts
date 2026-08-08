@@ -70,7 +70,7 @@ export interface AdminRole {
 export interface AdminUser {
   id: number;
   name: string;
-  role: 'admin' | 'master' | 'cashier' | 'waiter' | 'kitchen';
+  role: 'admin' | 'master' | 'cashier' | 'waiter' | 'kitchen' | 'bar';
   permissions: string[];
   active?: boolean;
 }

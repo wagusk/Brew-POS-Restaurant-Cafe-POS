@@ -252,7 +252,7 @@ class TableUpdateIn(BaseModel):
 class UserIn(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     pin: str = Field(min_length=4, max_length=8)
-    role: str = Field(pattern=r"^(admin|cashier|waiter|kitchen)$")
+    role: str = Field(pattern=r"^(admin|master|cashier|waiter|kitchen|bar)$")
     permissions: list[str] | None = None
     active: bool = True
 
@@ -260,7 +260,7 @@ class UserIn(BaseModel):
 class UserUpdateIn(BaseModel):
     name: str | None = None
     pin: str | None = Field(default=None, max_length=8)
-    role: str | None = Field(default=None, pattern=r"^(admin|cashier|waiter|kitchen)$")
+    role: str | None = Field(default=None, pattern=r"^(admin|master|cashier|waiter|kitchen|bar)$")
     permissions: list[str] | None = None
     active: bool | None = None
 

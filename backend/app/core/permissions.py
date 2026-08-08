@@ -48,6 +48,11 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "dashboard.view", "kitchen.view", "bar.view", "menu.view",
         "kitchen.serve", "bar.serve",
     },
+    # Bar: same as kitchen (can view both stations, serve both)
+    "bar": {
+        "dashboard.view", "kitchen.view", "bar.view", "menu.view",
+        "kitchen.serve", "bar.serve",
+    },
 }
 
 
