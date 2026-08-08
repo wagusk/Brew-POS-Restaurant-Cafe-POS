@@ -10,6 +10,7 @@ from app.schemas import (
 )
 from app.models import User, Order
 from app.core.security import current_user, require_role, require_permission
+from app.core.permissions import can
 from app.services import (
     submit_order, list_orders, get_order, update_order_status, to_order_out,
     today_stats, accept_order, close_order, cancel_order, append_items,
@@ -66,12 +67,8 @@ def _fire_customer_receipt(db: Session, order) -> None:
 
 
 @router.post("/checkout", response_model=OrderOut)
-async def checkout(payload: CheckoutIn, db: Session = Depends(get_db), user: User = Depends(require_permission("waiter.view"))):
-    """Waiter (or any role) sends a new order to the kitchen.
-
-    Always creates the order in 'open' status with no payment. The cashier
-    will close the bill once the kitchen has accepted the order.
-    """
+async def checkout(payload: CheckoutIn, db: Session = Depends(get_db), user: User = Depends(require_permission("order.open"))):
+    """Create a new order (open bill). Requires `order.open` permission."""
     try:
         order = submit_order(db, payload, user)
     except ValueError as e:
@@ -132,10 +129,13 @@ def get_endpoint(order_id: int, db: Session = Depends(get_db), user: User = Depe
 
 @router.patch("/{order_id}", response_model=OrderOut)
 async def update_endpoint(order_id: int, payload: OrderStatusIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
-    """Item-level and intermediate status updates (preparing / ready / served).
+    """Item-level status updates (preparing / ready / served).
 
-    For 'accept' or 'close', use the dedicated endpoints below.
+    Requires kitchen.serve OR bar.serve depending on the item's station.
+    Admin/master always have access.
     """
+    if not can(user, "kitchen.serve") and not can(user, "bar.serve"):
+        raise HTTPException(status_code=403, detail="Missing permission: kitchen.serve or bar.serve")
     try:
         order = update_order_status(db, order_id, payload.status, payload.item_id, payload.item_status)
     except ValueError as e:
@@ -146,7 +146,7 @@ async def update_endpoint(order_id: int, payload: OrderStatusIn, db: Session = D
 
 
 @router.post("/{order_id}/accept", response_model=OrderOut)
-async def accept_endpoint(order_id: int, db: Session = Depends(get_db), user: User = Depends(require_permission("kitchen.view"))):
+async def accept_endpoint(order_id: int, db: Session = Depends(get_db), user: User = Depends(require_permission("kitchen.serve"))):
     """Kitchen acknowledges receipt of the order. open -> accepted."""
     try:
         order = accept_order(db, order_id)
@@ -162,7 +162,7 @@ async def append_items_endpoint(
     order_id: int,
     payload: AppendItemsIn,
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("waiter.view")),
+    user: User = Depends(require_permission("order.append")),
 ):
     """Waiter appends items to an existing bill (single-bill-per-table UX)."""
     try:
@@ -175,10 +175,8 @@ async def append_items_endpoint(
 
 
 @router.post("/{order_id}/close", response_model=OrderOut)
-async def close_endpoint(order_id: int, payload: CloseOrderIn, db: Session = Depends(get_db), user: User = Depends(require_permission("cashier.view"))):
-    """Cashier closes a bill after the kitchen has accepted it.
-
-    Records the payment and transitions the order to 'paid'.
+async def close_endpoint(order_id: int, payload: CloseOrderIn, db: Session = Depends(get_db), user: User = Depends(require_permission("order.close"))):
+    """Cashier closes a bill. Records the payment and transitions the order to 'paid'.
 
     M21.1 — discount rules (two paths):
       • Preset path (cashier UX): the cashier passes `preset_label`
@@ -224,7 +222,7 @@ async def close_endpoint(order_id: int, payload: CloseOrderIn, db: Session = Dep
     # 2. Permission gate — only required for FREE-FORM (admin) discounts.
     # Cashier-preset paths pass because admins configured the presets.
     if resolved_discount > 0 and not preset_applied:
-        if "discount.apply" not in (user.permissions or []):
+        if "order.discount" not in (user.permissions or []):
             raise HTTPException(
                 403,
                 "You don't have permission to apply a discount. Ask an admin.",
@@ -267,7 +265,7 @@ async def cancel_endpoint(
     order_id: int,
     payload: CancelOrderIn,
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("kitchen.view")),
+    user: User = Depends(require_permission("order.cancel")),
 ):
     """Kitchen cancels an order or a single item (e.g. sold-out).
 

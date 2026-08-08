@@ -1687,20 +1687,18 @@ function CategoryRow({
   );
 }
 
-function RoleRow({
-  label, color, count, active, onSelect, onEdit, onDelete, iconBtnShape,
+function UserRow({
+  user, active, roleColor, onSelect, onEdit, onDelete, iconBtnShape,
 }: {
-  label: string;
-  color: string;
-  count: number;
+  user: AdminUser;
   active: boolean;
+  roleColor: string;
   onSelect: () => void;
-  onEdit?: () => void;
-  onDelete?: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
   iconBtnShape: number;
 }) {
   const [hovered, setHovered] = useState(false);
-  const canDelete = count > 0;
   return (
     <Box
       role="button"
@@ -1720,33 +1718,33 @@ function RoleRow({
         cursor: 'pointer',
         borderBottom: '1px solid',
         borderColor: 'border.soft',
-        bgcolor: active ? `${color}14` : 'transparent',
+        bgcolor: active ? `${roleColor}14` : 'transparent',
         borderLeft: '3px solid',
-        borderLeftColor: active ? color : 'transparent',
+        borderLeftColor: active ? roleColor : 'transparent',
         transition: 'background-color 0.1s',
-        '&:hover': { bgcolor: active ? `${color}1f` : 'surface.muted' },
-        '&:focus-visible': { outline: `2px solid ${color}`, outlineOffset: -2 },
+        '&:hover': { bgcolor: active ? `${roleColor}1f` : 'surface.muted' },
+        '&:focus-visible': { outline: `2px solid ${roleColor}`, outlineOffset: -2 },
       }}
     >
       <Box
         sx={{
           width: 32, height: 32,
           borderRadius: `${iconBtnShape}px`,
-          bgcolor: active ? color : 'surface.muted',
-          color: active ? '#fff' : color,
+          bgcolor: active ? roleColor : 'surface.muted',
+          color: active ? '#fff' : roleColor,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           flexShrink: 0,
           fontWeight: 700, fontSize: '0.95rem',
         }}
       >
-        {label.charAt(0).toUpperCase()}
+        {user.name.charAt(0).toUpperCase()}
       </Box>
       <Box sx={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
         <Typography sx={{ fontWeight: active ? 700 : 600, lineHeight: 1.2, color: 'text.primary', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {label}
+          {user.name}
         </Typography>
-        <Typography variant="caption" sx={{ display: 'block', color: active ? color : 'text.secondary', fontWeight: 600 }}>
-          {count} user{count === 1 ? '' : 's'}
+        <Typography variant="caption" sx={{ display: 'block', color: active ? roleColor : 'text.secondary', fontWeight: 600 }}>
+          {user.role}{user.active ? '' : ' · inactive'}
         </Typography>
       </Box>
       {(hovered || active) && (
@@ -1754,7 +1752,7 @@ function RoleRow({
           <Tooltip title="Edit user">
             <IconButton
               size="small"
-              onClick={() => onEdit?.()}
+              onClick={onEdit}
               sx={{
                 bgcolor: 'rgba(43, 108, 255, 0.12)', color: '#2b6cff',
                 borderRadius: `${iconBtnShape}px`,
@@ -1764,17 +1762,15 @@ function RoleRow({
               <EditIcon sx={{ fontSize: 16 }} />
             </IconButton>
           </Tooltip>
-          <Tooltip title={canDelete ? 'Delete user' : `No users in this role to delete`}>
+          <Tooltip title="Delete user">
             <span>
               <IconButton
                 size="small"
-                disabled={!canDelete}
-                onClick={() => onDelete?.()}
+                onClick={onDelete}
                 sx={{
                   bgcolor: 'rgba(216, 69, 60, 0.12)', color: '#d8453c',
                   borderRadius: `${iconBtnShape}px`,
                   '&:hover': { bgcolor: 'rgba(216, 69, 60, 0.22)' },
-                  '&.Mui-disabled': { opacity: 0.35 },
                 }}
               >
                 <DeleteIcon sx={{ fontSize: 16 }} />
@@ -1852,15 +1848,6 @@ function UsersWorkspace({ color }: { color: string }) {
   const reload = () => Admin.listUsers().then(setItems).catch(() => {});
   useEffect(() => { reload(); }, []);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return items.filter((u) => {
-      if (filterRole !== 'all' && u.role !== filterRole) return false;
-      if (q && !u.name.toLowerCase().includes(q)) return false;
-      return true;
-    });
-  }, [items, filterRole, search]);
-
   const selected = items.find((u) => u.id === selectedId) ?? null;
   const roleColor = (r: string) =>
     ROLE_LIST.find((x) => x.key === r)?.color || '#5b6472';
@@ -1890,7 +1877,7 @@ function UsersWorkspace({ color }: { color: string }) {
 
   return (
     <>
-      {/* COLUMN 2 — role filter with New button in header, Edit/Delete per row */}
+      {/* COLUMN 2 — role filter with New button */}
       <Paper
         square
         sx={{
@@ -1928,16 +1915,15 @@ function UsersWorkspace({ color }: { color: string }) {
             const count = r.key === 'all' ? items.length : items.filter((u) => u.role === r.key).length;
             const isActive = filterRole === r.key;
             return (
-              <RoleRow
+              <ListItemButton
                 key={r.key}
-                label={r.label}
-                color={r.color}
-                count={count}
                 active={isActive}
-                onSelect={() => { setFilterRole(r.key); setSelectedId(null); }}
-                onEdit={() => selected && setEditing(selected)}
-                onDelete={() => selected && remove(selected.id)}
-                iconBtnShape={SHAPE.iconBtn}
+                color={r.color}
+                label={r.label}
+                sublabel={`${count} user${count === 1 ? '' : 's'}`}
+                onClick={() => { setFilterRole(r.key); setSelectedId(null); }}
+                accent={isActive}
+                leading={<PeopleIcon />}
               />
             );
           })}
@@ -1946,7 +1932,7 @@ function UsersWorkspace({ color }: { color: string }) {
 
       <Divider orientation="vertical" flexItem />
 
-      {/* COLUMN 3 — user list */}
+      {/* COLUMN 3 — all users with Edit/Delete per row */}
       <Paper
         square
         sx={{
@@ -1960,9 +1946,9 @@ function UsersWorkspace({ color }: { color: string }) {
         }}
       >
         <ColumnHeader
-          title={filterRole === 'all' ? 'ALL USERS' : `${filterRole.toUpperCase()}S`}
-          color={filterRole === 'all' ? color : roleColor(filterRole)}
-          count={filtered.length}
+          title="ALL USERS"
+          color={color}
+          count={items.length}
         />
         <Box sx={{ p: 1.5, borderBottom: '1px solid', borderColor: 'border.default' }}>
           <TextField
@@ -1981,18 +1967,18 @@ function UsersWorkspace({ color }: { color: string }) {
           />
         </Box>
         <Box sx={{ flex: 1, overflowY: 'auto' }}>
-          {filtered.length === 0 ? (
-            <ColumnEmpty message="No users in this filter" />
-          ) : filtered.map((u) => (
-            <ListItemButton
+          {items.length === 0 ? (
+            <ColumnEmpty message="No users found" />
+          ) : items.filter((u) => !search.trim() || u.name.toLowerCase().includes(search.trim().toLowerCase())).map((u) => (
+            <UserRow
               key={u.id}
+              user={u}
               active={selectedId === u.id}
-              color={roleColor(u.role)}
-              label={u.name}
-              sublabel={`${u.role}${u.active ? '' : ' · inactive'}`}
-              onClick={() => setSelectedId(u.id)}
-              accent={selectedId === u.id}
-              leading={<Typography sx={{ fontWeight: 700, fontSize: '0.95rem' }}>{u.name.charAt(0).toUpperCase()}</Typography>}
+              roleColor={roleColor(u.role)}
+              onSelect={() => setSelectedId(u.id)}
+              onEdit={() => setEditing(u)}
+              onDelete={() => remove(u.id)}
+              iconBtnShape={SHAPE.iconBtn}
             />
           ))}
         </Box>
@@ -2010,7 +1996,9 @@ function UsersWorkspace({ color }: { color: string }) {
             <DetailRow label="Name" value={selected.name} />
             <DetailRow label="Role" value={selected.role} swatch={roleColor(selected.role)} />
             <DetailRow label="Status" value={selected.active ? 'Active' : 'Inactive'} />
-            <DetailRow label="Page access" value={(selected.permissions ?? []).map((p) => p.replace('.view', '')).join(', ') || 'None'} />
+            <DetailRow label="Page access" value={(selected.permissions ?? []).filter(p => p.endsWith('.view')).map((p) => p.replace('.view', '')).join(', ') || 'None'} />
+            <DetailRow label="Tasks" value={(selected.permissions ?? []).filter(p => !p.endsWith('.view') && !p.startsWith('admin.')).map((p) => p.replace('order.', '').replace('kitchen.', 'kitchen ').replace('bar.', 'bar ')).join(', ') || 'None'} />
+            <DetailRow label="Admin" value={(selected.permissions ?? []).filter(p => p.startsWith('admin.')).map((p) => p.replace('admin.', '').replace('_', ' ')).join(', ') || 'None'} />
             <DetailRow label="ID" value={`#${selected.id}`} />
           </Box>
         )}
@@ -2067,6 +2055,18 @@ function UserDialog({ open, initial, onClose, onSave }: {
           {[
             ['dashboard.view', 'Dashboard'], ['cashier.view', 'Cashier'], ['waiter.view', 'Waiter'],
             ['kitchen.view', 'Kitchen'], ['bar.view', 'Bar'], ['menu.view', 'Menu'], ['admin.view', 'Admin'],
+          ].map(([permission, label]) => (
+            <FormControlLabel
+              key={permission}
+              control={<Switch checked={permissions.includes(permission)} onChange={(e) => setPermissions((current) => e.target.checked ? [...current, permission] : current.filter((item) => item !== permission))} />}
+              label={label}
+            />
+          ))}
+          <Typography variant="caption" fontWeight={800}>TASKS</Typography>
+          {[
+            ['order.open', 'Open Bill'], ['order.append', 'Add to Bill'], ['order.close', 'Close Bill'],
+            ['order.cancel', 'Cancel Order'], ['order.discount', 'Apply Discount'],
+            ['kitchen.serve', 'Kitchen Serve'], ['bar.serve', 'Bar Serve'],
           ].map(([permission, label]) => (
             <FormControlLabel
               key={permission}
