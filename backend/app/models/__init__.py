@@ -11,12 +11,26 @@ from sqlalchemy.types import JSON
 from app.db.session import Base
 
 
+class Role(Base):
+    __tablename__ = "roles"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(20), unique=True)  # admin, cashier, waiter, etc.
+    label: Mapped[str] = mapped_column(String(40))  # Display name
+    color: Mapped[str] = mapped_column(String(20), default="#5b8def")
+    sort: Mapped[int] = mapped_column(Integer, default=0)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    def __repr__(self) -> str:
+        return f"<Role {self.name}>"
+
+
 class User(Base):
     __tablename__ = "users"
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(80))
     pin: Mapped[str] = mapped_column(String(120))  # bcrypt hash
-    role: Mapped[str] = mapped_column(String(20))  # admin | master | cashier | waiter | kitchen
+    role: Mapped[str] = mapped_column(String(20))  # references roles.name
     permissions: Mapped[list[str]] = mapped_column(MutableList.as_mutable(JSON), default=list)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

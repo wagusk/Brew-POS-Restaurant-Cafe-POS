@@ -85,18 +85,7 @@ const MAIN_ITEMS: MainItem[] = [
 ];
 
 // ── Role filter for Users tab ────────────────────────────────────────
-// Mirrors the cashier menu's "category chip filter" — picks the
-// secondary dimension (role) and lists users in it.
-type RoleKey = 'all' | 'admin' | 'master' | 'cashier' | 'waiter' | 'kitchen';
-
-const ROLE_LIST: { key: RoleKey; label: string; color: string }[] = [
-  { key: 'all',     label: 'All',     color: '#5b6472' },
-  { key: 'admin',   label: 'Admin',   color: '#6b46d3' },
-  { key: 'master',  label: 'Master',  color: '#d63031' },
-  { key: 'cashier', label: 'Cashier', color: '#2b6cff' },
-  { key: 'waiter',  label: 'Waiter',  color: '#0c8a7a' },
-  { key: 'kitchen', label: 'Kitchen', color: '#e07b1a' },
-];
+// Roles are now dynamic — fetched from API. No hardcoded list.
 
 // ─────────────────────────────────────────────────────────────────────
 // Reusable: ColumnHeader
@@ -1687,18 +1676,20 @@ function CategoryRow({
   );
 }
 
-function UserRow({
-  user, active, roleColor, onSelect, onEdit, onDelete, iconBtnShape,
+function RoleRow({
+  role, userCount, active, onSelect, onEdit, onDelete, iconBtnShape,
 }: {
-  user: AdminUser;
+  role: AdminRole;
+  userCount: number;
   active: boolean;
-  roleColor: string;
   onSelect: () => void;
   onEdit: () => void;
   onDelete: () => void;
   iconBtnShape: number;
 }) {
   const [hovered, setHovered] = useState(false);
+  const { label, color } = role;
+  const count = userCount;
   return (
     <Box
       role="button"
@@ -1718,33 +1709,33 @@ function UserRow({
         cursor: 'pointer',
         borderBottom: '1px solid',
         borderColor: 'border.soft',
-        bgcolor: active ? `${roleColor}14` : 'transparent',
+        bgcolor: active ? `${color}14` : 'transparent',
         borderLeft: '3px solid',
-        borderLeftColor: active ? roleColor : 'transparent',
+        borderLeftColor: active ? color : 'transparent',
         transition: 'background-color 0.1s',
-        '&:hover': { bgcolor: active ? `${roleColor}1f` : 'surface.muted' },
-        '&:focus-visible': { outline: `2px solid ${roleColor}`, outlineOffset: -2 },
+        '&:hover': { bgcolor: active ? `${color}1f` : 'surface.muted' },
+        '&:focus-visible': { outline: `2px solid ${color}`, outlineOffset: -2 },
       }}
     >
       <Box
         sx={{
           width: 32, height: 32,
           borderRadius: `${iconBtnShape}px`,
-          bgcolor: active ? roleColor : 'surface.muted',
-          color: active ? '#fff' : roleColor,
+          bgcolor: active ? color : 'surface.muted',
+          color: active ? '#fff' : color,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           flexShrink: 0,
           fontWeight: 700, fontSize: '0.95rem',
         }}
       >
-        {user.name.charAt(0).toUpperCase()}
+        {label.charAt(0).toUpperCase()}
       </Box>
       <Box sx={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
         <Typography sx={{ fontWeight: active ? 700 : 600, lineHeight: 1.2, color: 'text.primary', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {user.name}
+          {label}
         </Typography>
-        <Typography variant="caption" sx={{ display: 'block', color: active ? roleColor : 'text.secondary', fontWeight: 600 }}>
-          {user.role}{user.active ? '' : ' · inactive'}
+        <Typography variant="caption" sx={{ display: 'block', color: active ? color : 'text.secondary', fontWeight: 600 }}>
+          {count} user{count === 1 ? '' : 's'}
         </Typography>
       </Box>
       {(hovered || active) && (
@@ -1839,28 +1830,60 @@ function TableDialog({ open, initial, onClose, onSave }: {
 // ─────────────────────────────────────────────────────────────────────
 function UsersWorkspace({ color }: { color: string }) {
   const [items, setItems] = useState<AdminUser[]>([]);
-  const [filterRole, setFilterRole] = useState<RoleKey>('all');
+  const [roles, setRoles] = useState<AdminRole[]>([]);
+  const [filterRole, setFilterRole] = useState<string>('all');
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [editing, setEditing] = useState<AdminUser | null>(null);
   const [creating, setCreating] = useState(false);
+  const [editingRole, setEditingRole] = useState<AdminRole | null>(null);
+  const [creatingRole, setCreatingRole] = useState(false);
   const [search, setSearch] = useState('');
 
-  const reload = () => Admin.listUsers().then(setItems).catch(() => {});
+  const reload = () => {
+    Admin.listUsers().then(setItems).catch(() => {});
+    Admin.listRoles().then(setRoles).catch(() => {});
+  };
   useEffect(() => { reload(); }, []);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return items.filter((u) => {
+      if (filterRole !== 'all' && u.role !== filterRole) return false;
+      if (q && !u.name.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [items, filterRole, search]);
 
   const selected = items.find((u) => u.id === selectedId) ?? null;
   const roleColor = (r: string) =>
-    ROLE_LIST.find((x) => x.key === r)?.color || '#5b6472';
+    roles.find((x) => x.name === r)?.color || '#5b6472';
 
   const save = async (p: { name: string; pin: string; role: string; permissions: string[]; active: boolean }) => {
     if (editing) {
-      await Admin.updateUser(editing.id, p);
+      await Admin.updateUser(editing.id, {
+        name: p.name,
+        pin: p.pin || undefined,
+        role: p.role,
+        permissions: p.permissions,
+        active: p.active,
+      });
     } else {
       const created = await Admin.createUser(p) as AdminUser;
       setSelectedId(created.id);
     }
     setEditing(null);
     setCreating(false);
+    reload();
+  };
+
+  const saveRole = async (p: { name: string; label: string; color: string; sort?: number }) => {
+    if (editingRole) {
+      await Admin.updateRole(editingRole.id, p);
+    } else {
+      await Admin.createRole(p);
+    }
+    setEditingRole(null);
+    setCreatingRole(false);
     reload();
   };
 
@@ -1875,9 +1898,24 @@ function UsersWorkspace({ color }: { color: string }) {
     }
   };
 
+  const removeRole = async (id: number) => {
+    if (!confirm('Delete this role?')) return;
+    try {
+      await Admin.deleteRole(id);
+      if (filterRole !== 'all' && roles.find(r => r.id === id)?.name === filterRole) {
+        setFilterRole('all');
+      }
+      reload();
+    } catch (e: any) {
+      alert(e?.response?.data?.detail ?? 'Cannot delete role');
+    }
+  };
+
+  const roleUserCount = (roleName: string) => items.filter(u => u.role === roleName).length;
+
   return (
     <>
-      {/* COLUMN 2 — role filter with New button */}
+      {/* COLUMN 2 — role filter with New/Edit/Delete */}
       <Paper
         square
         sx={{
@@ -1893,7 +1931,67 @@ function UsersWorkspace({ color }: { color: string }) {
         <ColumnHeader
           title="ROLE"
           color={color}
-          count={ROLE_LIST.length}
+          count={roles.length}
+          action={
+            <Button
+              size="small"
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => setCreatingRole(true)}
+              sx={{
+                bgcolor: color, '&:hover': { bgcolor: color, filter: 'brightness(0.9)' },
+                borderRadius: `${SHAPE.button}px`,
+                minHeight: 36, fontWeight: 700, px: 1.25,
+              }}
+            >
+              New
+            </Button>
+          }
+        />
+        <Box sx={{ flex: 1, overflowY: 'auto' }}>
+          <ListItemButton
+            active={filterRole === 'all'}
+            color={color}
+            label="All roles"
+            sublabel={`${items.length} users`}
+            onClick={() => { setFilterRole('all'); setSelectedId(null); }}
+            accent={filterRole === 'all'}
+            leading={<PeopleIcon />}
+          />
+          {roles.map((r) => (
+            <RoleRow
+              key={r.id}
+              role={r}
+              userCount={roleUserCount(r.name)}
+              active={filterRole === r.name}
+              onSelect={() => { setFilterRole(r.name); setSelectedId(null); }}
+              onEdit={() => setEditingRole(r)}
+              onDelete={() => removeRole(r.id)}
+              iconBtnShape={SHAPE.iconBtn}
+            />
+          ))}
+        </Box>
+      </Paper>
+
+      <Divider orientation="vertical" flexItem />
+
+      {/* COLUMN 3 — user list filtered by role */}
+      <Paper
+        square
+        sx={{
+          width: '25%',
+          minWidth: 220,
+          maxWidth: 360,
+          display: 'flex',
+          flexDirection: 'column',
+          borderTop: 'none', borderBottom: 'none',
+          borderRadius: 0,
+        }}
+      >
+        <ColumnHeader
+          title={filterRole === 'all' ? 'ALL USERS' : `${filterRole.toUpperCase()}S`}
+          color={filterRole === 'all' ? color : roleColor(filterRole)}
+          count={filtered.length}
           action={
             <Button
               size="small"
@@ -1909,46 +2007,6 @@ function UsersWorkspace({ color }: { color: string }) {
               New
             </Button>
           }
-        />
-        <Box sx={{ flex: 1, overflowY: 'auto' }}>
-          {ROLE_LIST.map((r) => {
-            const count = r.key === 'all' ? items.length : items.filter((u) => u.role === r.key).length;
-            const isActive = filterRole === r.key;
-            return (
-              <ListItemButton
-                key={r.key}
-                active={isActive}
-                color={r.color}
-                label={r.label}
-                sublabel={`${count} user${count === 1 ? '' : 's'}`}
-                onClick={() => { setFilterRole(r.key); setSelectedId(null); }}
-                accent={isActive}
-                leading={<PeopleIcon />}
-              />
-            );
-          })}
-        </Box>
-      </Paper>
-
-      <Divider orientation="vertical" flexItem />
-
-      {/* COLUMN 3 — all users with Edit/Delete per row */}
-      <Paper
-        square
-        sx={{
-          width: '25%',
-          minWidth: 220,
-          maxWidth: 360,
-          display: 'flex',
-          flexDirection: 'column',
-          borderTop: 'none', borderBottom: 'none',
-          borderRadius: 0,
-        }}
-      >
-        <ColumnHeader
-          title="ALL USERS"
-          color={color}
-          count={items.length}
         />
         <Box sx={{ p: 1.5, borderBottom: '1px solid', borderColor: 'border.default' }}>
           <TextField
@@ -1967,18 +2025,18 @@ function UsersWorkspace({ color }: { color: string }) {
           />
         </Box>
         <Box sx={{ flex: 1, overflowY: 'auto' }}>
-          {items.length === 0 ? (
-            <ColumnEmpty message="No users found" />
-          ) : items.filter((u) => !search.trim() || u.name.toLowerCase().includes(search.trim().toLowerCase())).map((u) => (
-            <UserRow
+          {filtered.length === 0 ? (
+            <ColumnEmpty message="No users in this filter" />
+          ) : filtered.map((u) => (
+            <ListItemButton
               key={u.id}
-              user={u}
               active={selectedId === u.id}
-              roleColor={roleColor(u.role)}
-              onSelect={() => setSelectedId(u.id)}
-              onEdit={() => setEditing(u)}
-              onDelete={() => remove(u.id)}
-              iconBtnShape={SHAPE.iconBtn}
+              color={roleColor(u.role)}
+              label={u.name}
+              sublabel={`${u.role}${u.active ? '' : ' · inactive'}`}
+              onClick={() => setSelectedId(u.id)}
+              accent={selectedId === u.id}
+              leading={<Typography sx={{ fontWeight: 700, fontSize: '0.95rem' }}>{u.name.charAt(0).toUpperCase()}</Typography>}
             />
           ))}
         </Box>
@@ -1988,7 +2046,40 @@ function UsersWorkspace({ color }: { color: string }) {
 
       {/* COLUMN 4 — detail */}
       <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <ColumnHeader title="DETAIL" color={color} />
+        <ColumnHeader
+          title="DETAIL"
+          color={color}
+          action={selected && (
+            <Box sx={{ display: 'flex', gap: 0.5 }}>
+              <Tooltip title="Edit">
+                <IconButton
+                  size="small"
+                  onClick={() => setEditing(selected)}
+                  sx={{
+                    bgcolor: 'rgba(43, 108, 255, 0.12)', color: '#2b6cff',
+                    borderRadius: `${SHAPE.iconBtn}px`,
+                    '&:hover': { bgcolor: 'rgba(43, 108, 255, 0.22)' },
+                  }}
+                >
+                  <EditIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Delete">
+                <IconButton
+                  size="small"
+                  onClick={() => remove(selected.id)}
+                  sx={{
+                    bgcolor: 'rgba(216, 69, 60, 0.12)', color: '#d8453c',
+                    borderRadius: `${SHAPE.iconBtn}px`,
+                    '&:hover': { bgcolor: 'rgba(216, 69, 60, 0.22)' },
+                  }}
+                >
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </Box>
+          )}
+        />
         {!selected ? (
           <ColumnEmpty message="No user selected" />
         ) : (
@@ -2007,16 +2098,25 @@ function UsersWorkspace({ color }: { color: string }) {
       <UserDialog
         open={creating || !!editing}
         initial={editing ?? undefined}
+        roles={roles}
         onClose={() => { setCreating(false); setEditing(null); }}
         onSave={save}
+      />
+
+      <RoleDialog
+        open={creatingRole || !!editingRole}
+        initial={editingRole ?? undefined}
+        onClose={() => { setCreatingRole(false); setEditingRole(null); }}
+        onSave={saveRole}
       />
     </>
   );
 }
 
-function UserDialog({ open, initial, onClose, onSave }: {
+function UserDialog({ open, initial, roles, onClose, onSave }: {
   open: boolean;
   initial?: AdminUser;
+  roles: AdminRole[];
   onClose: () => void;
   onSave: (p: { name: string; pin: string; role: string; permissions: string[]; active: boolean }) => void | Promise<void>;
 }) {
@@ -2042,10 +2142,10 @@ function UserDialog({ open, initial, onClose, onSave }: {
       <DialogContent dividers>
         <Stack spacing={2}>
           <TextField label="Name" value={name} onChange={(e) => setName(e.target.value)} fullWidth size="small" autoFocus />
-          <TextField label={initial ? 'New PIN (leave empty to keep)' : 'PIN (4–8 digits)'} value={pin} onChange={(e) => setPin(e.target.value)} fullWidth size="small" inputProps={{ inputMode: 'numeric' }} />
+          <TextField label={initial && !pin ? 'New PIN (leave empty to keep)' : 'PIN (4–8 digits)'} value={pin} onChange={(e) => setPin(e.target.value)} fullWidth size="small" inputProps={{ inputMode: 'numeric' }} />
           <TextField select label="Role" value={role} onChange={(e) => setRole(e.target.value)} fullWidth size="small">
-            {ROLE_LIST.filter((r) => r.key !== 'all').map((r) => (
-              <MenuItem key={r.key} value={r.key}>
+            {roles.map((r) => (
+              <MenuItem key={r.id} value={r.name}>
                 <Box sx={{ display: 'inline-block', width: 12, height: 12, borderRadius: '50%', bgcolor: r.color, mr: 1 }} />
                 {r.label}
               </MenuItem>
@@ -2091,9 +2191,65 @@ function UserDialog({ open, initial, onClose, onSave }: {
       <DialogActions sx={{ p: 2 }}>
         <Button onClick={onClose} color="warning">Cancel</Button>
         <Button
-          onClick={() => name && (!initial || pin) && onSave({ name, pin: pin || (initial?.name ?? ''), role, permissions, active })}
+          onClick={() => name && onSave({ name, pin, role, permissions, active })}
           variant="contained"
           disabled={!name || (!initial && pin.length < 4)}
+          sx={{
+            bgcolor: MAIN_COLOR.users,
+            '&:hover': { bgcolor: '#4f31b3' },
+            borderRadius: `${SHAPE.button}px`,
+            fontWeight: 700,
+          }}
+        >
+          {initial ? 'Save' : 'Create'}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+function RoleDialog({ open, initial, onClose, onSave }: {
+  open: boolean;
+  initial?: AdminRole;
+  onClose: () => void;
+  onSave: (p: { name: string; label: string; color: string; sort?: number }) => void | Promise<void>;
+}) {
+  const [name, setName] = useState('');
+  const [label, setLabel] = useState('');
+  const [color, setColor] = useState('#5b8def');
+  const [sort, setSort] = useState(0);
+
+  useEffect(() => {
+    if (open) {
+      setName(initial?.name ?? '');
+      setLabel(initial?.label ?? '');
+      setColor(initial?.color ?? '#5b8def');
+      setSort(initial?.sort ?? 0);
+    }
+  }, [open, initial]);
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: `${SHAPE.dialog}px` } }}>
+      <DialogTitle sx={{ fontWeight: 700 }}>{initial ? 'Edit Role' : 'Add Role'}</DialogTitle>
+      <DialogContent dividers>
+        <Stack spacing={2}>
+          <TextField label="Name (id)" value={name} onChange={(e) => setName(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))} fullWidth size="small" autoFocus placeholder="e.g. manager" />
+          <TextField label="Label" value={label} onChange={(e) => setLabel(e.target.value)} fullWidth size="small" placeholder="e.g. Manager" />
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+            <input type="color" value={color} onChange={(e) => setColor(e.target.value)} style={{ width: 48, height: 36, border: 'none', borderRadius: 4, cursor: 'pointer', background: 'transparent' }} />
+            <TextField value={color} onChange={(e) => setColor(e.target.value)} size="small" sx={{ flex: 1 }} placeholder="#5b8def" />
+            <Box sx={{ width: 48, height: 36, borderRadius: `${SHAPE.button}px`, bgcolor: color, border: '1px solid', borderColor: 'border.default' }} />
+          </Box>
+          <TextField label="Sort order" type="number" value={sort} onChange={(e) => setSort(parseInt(e.target.value) || 0)} fullWidth size="small" />
+          <FormControlLabel control={<Switch checked={true} disabled />} label="Active" />
+        </Stack>
+      </DialogContent>
+      <DialogActions sx={{ p: 2 }}>
+        <Button onClick={onClose} color="warning">Cancel</Button>
+        <Button
+          onClick={() => name && label && onSave({ name, label, color, sort })}
+          variant="contained"
+          disabled={!name || !label}
           sx={{
             bgcolor: MAIN_COLOR.users,
             '&:hover': { bgcolor: '#4f31b3' },

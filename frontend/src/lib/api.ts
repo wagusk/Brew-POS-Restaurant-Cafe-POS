@@ -59,6 +59,14 @@ export interface AdminTable {
   seats: number;
   active: boolean;
 }
+export interface AdminRole {
+  id: number;
+  name: string;
+  label: string;
+  color: string;
+  sort: number;
+  active?: boolean;
+}
 export interface AdminUser {
   id: number;
   name: string;
@@ -68,6 +76,13 @@ export interface AdminUser {
 }
 
 export const Admin = {
+  listRoles: () => api.get<AdminRole[]>('/admin/roles').then((r) => r.data),
+  createRole: (p: { name: string; label: string; color: string; sort?: number }) =>
+    api.post<AdminRole>('/admin/roles', p).then((r) => r.data),
+  updateRole: (id: number, p: Partial<{ name: string; label: string; color: string; sort: number }>) =>
+    api.patch<AdminRole>(`/admin/roles/${id}`, p).then((r) => r.data),
+  deleteRole: (id: number) => api.delete<{ deleted: number }>(`/admin/roles/${id}`).then((r) => r.data),
+
   listCategories: () => api.get<AdminCategory[]>('/admin/categories').then((r) => r.data),
   createCategory: (p: { name: string; color: string; icon?: string; sort?: number; kind?: 'kitchen' | 'bar' | 'both' }) =>
     api.post<AdminCategory>('/admin/categories', p).then((r) => r.data),

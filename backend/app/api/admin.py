@@ -16,12 +16,52 @@ from app.schemas import (
     ProductIn, ProductUpdateIn,
     TableIn, TableUpdateIn,
     UserIn, UserUpdateIn,
+    RoleOut, RoleIn, RoleUpdateIn,
 )
-from app.models import User as UserModel, Order, OrderItem, Payment, Category, Product
+from app.models import User as UserModel, Order, OrderItem, Payment, Category, Product, Role
+from sqlalchemy import select
 from app.core.security import require_role, require_permission
 from app.services import crud
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+
+# ---------- Roles ----------
+
+@router.get("/roles", response_model=list[RoleOut])
+def list_roles_endpoint(db: Session = Depends(get_db), user: UserModel = Depends(require_role("admin"))):
+    return [RoleOut.model_validate(r) for r in crud.list_roles(db)]
+
+
+@router.post("/roles", response_model=RoleOut)
+def create_role_endpoint(payload: RoleIn, db: Session = Depends(get_db), user: UserModel = Depends(require_role("admin"))):
+    existing = db.scalar(select(Role).where(Role.name == payload.name))
+    if existing:
+        raise HTTPException(400, f"Role '{payload.name}' already exists")
+    try:
+        role = crud.create_role(db, name=payload.name, label=payload.label, color=payload.color, sort=payload.sort)
+    except Exception as e:
+        raise HTTPException(400, str(e))
+    return RoleOut.model_validate(role)
+
+
+@router.patch("/roles/{rid}", response_model=RoleOut)
+def update_role_endpoint(rid: int, payload: RoleUpdateIn, db: Session = Depends(get_db), user: UserModel = Depends(require_role("admin"))):
+    role = crud.update_role(db, rid, name=payload.name, label=payload.label, color=payload.color, sort=payload.sort)
+    if not role:
+        raise HTTPException(404, "Role not found")
+    return RoleOut.model_validate(role)
+
+
+@router.delete("/roles/{rid}")
+def delete_role_endpoint(rid: int, db: Session = Depends(get_db), user: UserModel = Depends(require_role("admin"))):
+    try:
+        ok = crud.delete_role(db, rid)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if not ok:
+        raise HTTPException(404, "Role not found")
+    return {"deleted": rid}
 
 
 # ---------- Categories ----------

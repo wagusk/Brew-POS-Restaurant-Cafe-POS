@@ -1,9 +1,19 @@
 """Seed a cafe menu + 3 users + 8 tables. Re-runnable: idempotent on PIN."""
 from __future__ import annotations
 from app.db.session import Base, current_engine, SessionLocal
-from app.models import User, Category, Product, ModifierGroup, ModifierOption, Table
+from app.models import User, Role, Category, Product, ModifierGroup, ModifierOption, Table
 from app.core.security import hash_pin
 
+
+SEED_ROLES = [
+    # name, label, color, sort
+    ("admin", "Admin", "#6b46d3", 0),
+    ("master", "Master", "#d63031", 1),
+    ("cashier", "Cashier", "#2b6cff", 2),
+    ("waiter", "Waiter", "#0c8a7a", 3),
+    ("kitchen", "Kitchen", "#e07b1a", 4),
+    ("bar", "Bar", "#0e9ec7", 5),
+]
 
 SEED_USERS = [
     ("Admin", "9999", "admin"),
@@ -73,6 +83,16 @@ def run():
     Base.metadata.create_all(bind=current_engine())
     db = SessionLocal()
     try:
+        # Roles
+        for name, label, color, sort in SEED_ROLES:
+            existing = db.query(Role).filter(Role.name == name).first()
+            if existing:
+                existing.label = label
+                existing.color = color
+                existing.sort = sort
+            else:
+                db.add(Role(name=name, label=label, color=color, sort=sort))
+
         # Users
         for name, pin, role in SEED_USERS:
             existing = db.query(User).filter(User.name == name).first()
