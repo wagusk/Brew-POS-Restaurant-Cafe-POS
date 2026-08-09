@@ -1471,21 +1471,35 @@ function TaxDiscountsWorkspace({ color }: { color: string }) {
     setPresetDraft({ ...presetDraft, mode });
   };
 
-  // Save tax (only the rate — discount section saves separately)
+  const addTax = () => {
+    setTaxes([...taxes, { name: '', rate: 0 }]);
+  };
+
+  const updateTax = (idx: number, field: 'name' | 'rate', value: string) => {
+    const next = [...taxes];
+    if (field === 'name') next[idx] = { ...next[idx], name: value };
+    else next[idx] = { ...next[idx], rate: parseFloat(value) || 0 };
+    setTaxes(next);
+  };
+
+  const removeTax = (idx: number) => {
+    setTaxes(taxes.filter((_, i) => i !== idx));
+  };
+
   const saveTax = async () => {
-    const parsed = parseFloat(taxInput);
-    if (Number.isNaN(parsed) || parsed < 0 || parsed > 100) {
-      setToast({ msg: 'Tax rate must be between 0 and 100 percent.', severity: 'error' });
-      return;
+    for (const t of taxes) {
+      if (!t.name.trim()) { setToast({ msg: 'Tax name cannot be empty.', severity: 'error' }); return; }
+      if (t.rate < 0 || t.rate > 100) { setToast({ msg: 'Tax rate must be between 0 and 100.', severity: 'error' }); return; }
     }
     setSavingTax(true);
     try {
-      const next = await Settings.setTax(parsed / 100);
+      const payload = taxes.map((t) => ({ name: t.name.trim(), rate: t.rate / 100 }));
+      const next = await Settings.setTaxes(payload);
       setSettings(next);
-      setTaxInput((Number(next.tax_rate ?? 0) * 100).toFixed(2));
-      setToast({ msg: `Tax saved at ${parsed.toFixed(2)}%.`, severity: 'success' });
+      setTaxes((next.taxes ?? []).map((t: TaxItem) => ({ name: t.name, rate: Number(t.rate) * 100 })));
+      setToast({ msg: 'Taxes saved.', severity: 'success' });
     } catch (e: any) {
-      setToast({ msg: e?.response?.data?.detail ?? 'Failed to update tax', severity: 'error' });
+      setToast({ msg: e?.response?.data?.detail ?? 'Failed to update taxes', severity: 'error' });
     } finally {
       setSavingTax(false);
     }
