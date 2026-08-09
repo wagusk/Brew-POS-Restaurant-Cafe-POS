@@ -561,15 +561,21 @@ $ python smoke_test_crud.py                              → 🎉 ALL CRUD SMOKE
   - Ad-hoc verifier 8/8 PASS + byte-level multi-line receipt check PASS
   - All lint + tsc + build checks pass (0/0); backend import OK; 64 → 65 routes (+printer/status)
 - [ ] Remaining M20 work (next session): none — all items shipped
-- [x] M20 empty bill cancel/close (2026-08-09):
-  - Backend `close_order`: empty open bills can now be closed directly with $0 payment (no kitchen acceptance required)
-  - Backend `cancel_order`: empty open bills already cancellable (verified, no change needed)
+- [x] M20 empty bill delete entirely (2026-08-09):
+  - Backend `close_order`: empty open bills are DELETED entirely (no record, no payment, no audit log)
+  - Backend `cancel_order`: empty open bills are DELETED entirely (same path — delete, not cancel status)
+  - Backend `_next_order_number`: monotonic counter persisted in settings JSON — bill numbers NEVER reused
   - Frontend CashierPage: empty open bills show "Cancel" (red) + "Close" (green) buttons
-  - Frontend: bill has items → existing Pay Bill flow unchanged (Print receipt, Pay Bill buttons)
-  - Confirmation popup: title + explanation + Yes/No buttons
-  - Bill numbers are NOT reused — next open-bill gets the next sequential number
-  - Verified end-to-end: open empty → cancel (status=cancelled, total=0) → open new → close with $0 (status=paid, payment=$0) → table freed → bill number incremented
+  - Frontend: bill has items → existing Pay Bill flow unchanged
+  - Confirmation popup: title + explanation + Yes/Delete button
+  - Verified end-to-end: open empty → delete → bill 404 → table freed → next bill gets next sequential number
   - Ad-hoc verifier 8/8 PASS; build clean
+- [x] M20 bill history cancelled/void (2026-08-09):
+  - Backend `get_bill_history`: default view shows paid + void, cancelled bills EXCLUDED
+  - Frontend `ReportStatus` type: replaced 'cancelled' with 'void'
+  - Voided orders stay in DB (status=void), visible in history, excluded from reports
+  - Verified: cancelled bills disappear from history, voided bills visible in history
+  - Ad-hoc verifier 7/7 PASS
 
 
 ### M20 — Database menu collapse + printer config schema prep (partial)

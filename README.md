@@ -27,18 +27,19 @@ Then open `http://localhost:8000` on any terminal.
 - **Station-isolated serving** — Kitchen marking served doesn't affect bar display, and vice versa.
 - **Station routing** — Products route to kitchen, bar, or both. Combos appear on both stations.
 - **Single-bill-per-table** — Only one open bill per table. Waiter adds to existing, never duplicates.
-- **Permission-based access** — Granular permissions (order.open, order.close, kitchen.serve, etc.).
+- **Permission-based access** — Granular permissions (order.open, order.close, order.void, kitchen.serve, etc.).
 - **Dynamic roles** — Admin can create/edit roles with custom permissions.
-- **Receipts** — Reprint button on paid bills; ESC/POS printer support.
+- **Printer status** — Cashier header chip polls `/api/printer/status`, shows mode + dry_run indicator.
+- **Empty bill handling** — Empty open bills are deleted entirely (no record, no payment, bill numbers monotonic).
 - **Stats** — Today orders, revenue, average ticket, open tickets.
-- **Reports** — Sales summary, category breakdown, item sales, payment methods, bill history.
+- **Reports** — Sales summary, category breakdown, item sales, payment methods, bill history (paid + void, cancelled excluded).
 - **Discounts** — Fixed or percent presets configured by admin; cashier applies at checkout.
 - **Single-file SQLite** — `backend/brewpos.db`. Portable, no external DB.
 - **No Docker required** — Pure Python + Node. Runs anywhere.
 - **Admin Panel** — Full CRUD for users, products, categories, tables, roles, tax, discounts, printer config.
 - **Database management** — URL editor, reload engine, reset & seed, export/import backup.
 - **Multilingual UI** — English and Bahasa Indonesia included. Easy to extend with new languages.
-- **Order Voiding** — Admin can void any order (mistake, wrong order). Voided orders are excluded from all reports and displays.
+- **Order Voiding** — Admin can void any order. Voided orders stay in DB (status=void), visible in bill history, excluded from reports.
 - **Permission-based access** — Granular permissions (order.open, order.close, order.void, kitchen.serve, etc.) with per-user customization.
 - **Dynamic roles** — Admin can create/edit roles with custom permissions and visual identity (color, sort order).
 
@@ -385,8 +386,10 @@ Open `http://localhost:8000/docs` for interactive Swagger UI.
 ```
 open → accepted → preparing → ready → served → paid
    ↓                              ↓
-  cancelled                     void
+  (empty: deleted)              void
 ```
+
+Empty open bills (no items) are deleted entirely — no record kept. Voided orders stay in DB with status=void, visible in bill history, excluded from reports.
 
 `OrderItem.status`:
 ```
@@ -409,13 +412,14 @@ The cashier can **open a bill first** (empty, status=`open`), then the waiter ad
 - [x] Reports (sales, categories, items, payments, bill history)
 - [x] Database management (URL editor, reload, reset, export, import)
 - [x] Discount presets (fixed + percent)
-- [x] Printer configuration (network/USB/dummy)
+- [x] Printer configuration (network/USB/dummy, multi-line header/footer, printer status chip)
+- [x] Empty bill handling (delete entirely, no record kept)
 - [x] Permission-based access control
 - [x] Dynamic role management
 - [x] Single-bill-per-table enforcement
 - [x] Cashier "Open Bill" popup
 - [x] Multilingual UI (English + Bahasa Indonesia)
-- [x] Order voiding (admin can void any order — excluded from reports)
+- [x] Order voiding (stays in DB, status=void, visible in history, excluded from reports)
 - [ ] Receipt printing (ESC/POS, thermal) — config UI done, hardware pending
 - [ ] Inventory deduction on order
 - [ ] Multi-outlet (each terminal = outlet)
