@@ -62,6 +62,9 @@ export default function CashierPage() {
   const [changeDue, setChangeDue] = useState<{ amount: number; total: number; tendered: number } | null>(null);
   // M20 — Printer status chip. Polls /api/printer/status every 10s.
   const [printerStatus, setPrinterStatus] = useState<{ mode: string; dry_run: boolean } | null>(null);
+  // M20 — Empty bill action dialog. Holds the pending action for the
+  // confirmation popup ('cancel' | 'close' | null).
+  const [emptyBillAction, setEmptyBillAction] = useState<'cancel' | 'close' | null>(null);
 
   const reload = () => {
     Orders.list().then(setBills).catch(() => {});
@@ -380,86 +383,184 @@ export default function CashierPage() {
               either without looking. */}
           {selectedBill && (
             <Box sx={{ p: 2, borderTop: '1px solid', borderColor: 'border.default', bgcolor: 'surface.paper' }}>
-              <Box sx={{ display: 'flex', gap: 1 }}>
-                {/* Print receipt — only on paid bills (backend guard).
-                    Hidden entirely when the bill isn't paid so the Pay
-                    button gets full width of the row. */}
-                {selectedBill.status === 'paid' && (
+              {selectedBill.items.length === 0 && selectedBill.status === 'open' ? (
+                // M20 — Empty bill: Cancel or Close without payment
+                <Box sx={{ display: 'flex', gap: 1 }}>
                   <Button
                     variant="contained"
                     size="large"
-                    startIcon={reprintingBill
-                      ? <CircularProgress size={16} sx={{ color: 'common.white' }} />
-                      : <PrintOutlinedIcon />}
-                    onClick={async () => {
-                      setReprintingBill(true);
-                      try {
-                        const res = await Orders.printReceipt(selectedBill.id);
-                        setSnack({
-                          msg: res.ok
-                            ? `Receipt reprinted · ${res.bytes_written} bytes · ${res.elapsed_ms ?? 0}ms`
-                            : `Receipt failed · ${res.error ?? 'unknown error'}`,
-                          severity: res.ok ? 'success' : 'error',
-                        });
-                      } catch (e: any) {
-                        const detail = e?.response?.data?.detail ?? e?.message ?? 'Reprint request failed';
-                        setSnack({
-                          msg: typeof detail === 'string' ? detail : JSON.stringify(detail),
-                          severity: 'error',
-                        });
-                      } finally {
-                        setReprintingBill(false);
-                      }
-                    }}
-                    disabled={reprintingBill}
+                    startIcon={<CancelIcon />}
+                    onClick={() => setEmptyBillAction('cancel')}
                     sx={{
                       flex: 1,
-                      bgcolor: '#2b6cff',
+                      bgcolor: '#d32f2f',
                       borderRadius: `${SHAPE.button}px`,
                       minHeight: 56,
                       fontWeight: 800,
-                      fontSize: '1.0rem',
+                      fontSize: '1.05rem',
                       boxShadow: 'none',
-                      '&:hover': { bgcolor: '#2b6cff', filter: 'brightness(0.92)' },
+                      '&:hover': { bgcolor: '#b71c1c' },
                     }}
                   >
-                    {reprintingBill ? 'Printing…' : 'Print'}
+                    Cancel
                   </Button>
-                )}
-                <Button
-                  fullWidth
-                  variant="contained"
-                  size="large"
-                  startIcon={<CheckCircleIcon />}
-                  onClick={() => setPaying(selectedBill)}
-                  disabled={selectedBill.status === 'paid' || selectedBill.status === 'cancelled'}
-                  sx={{
-                    flex: selectedBill.status === 'paid' ? 1 : 1,
-                    bgcolor: 'role.cashier',
-                    borderRadius: `${SHAPE.button}px`,
-                    minHeight: 56,
-                    fontWeight: 800,
-                    fontSize: '1.05rem',
-                    boxShadow: 'none',
-                    '&:hover': { bgcolor: 'role.cashier', filter: 'brightness(0.92)' },
-                  }}
-                >
-                  {selectedBill.status === 'paid'
-                    ? 'Paid'
-                    : selectedBill.status === 'cancelled'
-                      ? 'Cancelled'
-                      : `Pay Bill $${selectedBill.total.toFixed(2)}`}
-                </Button>
-              </Box>
+                  <Button
+                    variant="contained"
+                    size="large"
+                    startIcon={<CheckCircleIcon />}
+                    onClick={() => setEmptyBillAction('close')}
+                    sx={{
+                      flex: 1,
+                      bgcolor: '#2e7d32',
+                      borderRadius: `${SHAPE.button}px`,
+                      minHeight: 56,
+                      fontWeight: 800,
+                      fontSize: '1.05rem',
+                      boxShadow: 'none',
+                      '&:hover': { bgcolor: '#1b5e20' },
+                    }}
+                  >
+                    Close
+                  </Button>
+                </Box>
+              ) : (
+                // Existing flow — bill has items
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  {selectedBill.status === 'paid' && (
+                    <Button
+                      variant="contained"
+                      size="large"
+                      startIcon={reprintingBill
+                        ? <CircularProgress size={16} sx={{ color: 'common.white' }} />
+                        : <PrintOutlinedIcon />}
+                      onClick={async () => {
+                        setReprintingBill(true);
+                        try {
+                          const res = await Orders.printReceipt(selectedBill.id);
+                          setSnack({
+                            msg: res.ok
+                              ? `Receipt reprinted · ${res.bytes_written} bytes · ${res.elapsed_ms ?? 0}ms`
+                              : `Receipt failed · ${res.error ?? 'unknown error'}`,
+                            severity: res.ok ? 'success' : 'error',
+                          });
+                        } catch (e: any) {
+                          const detail = e?.response?.data?.detail ?? e?.message ?? 'Reprint request failed';
+                          setSnack({
+                            msg: typeof detail === 'string' ? detail : JSON.stringify(detail),
+                            severity: 'error',
+                          });
+                        } finally {
+                          setReprintingBill(false);
+                        }
+                      }}
+                      disabled={reprintingBill}
+                      sx={{
+                        flex: 1,
+                        bgcolor: '#2b6cff',
+                        borderRadius: `${SHAPE.button}px`,
+                        minHeight: 56,
+                        fontWeight: 800,
+                        fontSize: '1.0rem',
+                        boxShadow: 'none',
+                        '&:hover': { bgcolor: '#2b6cff', filter: 'brightness(0.92)' },
+                      }}
+                    >
+                      {reprintingBill ? 'Printing…' : 'Print'}
+                    </Button>
+                  )}
+                  <Button
+                    fullWidth
+                    variant="contained"
+                    size="large"
+                    startIcon={<CheckCircleIcon />}
+                    onClick={() => setPaying(selectedBill)}
+                    disabled={selectedBill.status === 'paid' || selectedBill.status === 'cancelled'}
+                    sx={{
+                      flex: selectedBill.status === 'paid' ? 1 : 1,
+                      bgcolor: 'role.cashier',
+                      borderRadius: `${SHAPE.button}px`,
+                      minHeight: 56,
+                      fontWeight: 800,
+                      fontSize: '1.05rem',
+                      boxShadow: 'none',
+                      '&:hover': { bgcolor: 'role.cashier', filter: 'brightness(0.92)' },
+                    }}
+                  >
+                    {selectedBill.status === 'paid'
+                      ? 'Paid'
+                      : selectedBill.status === 'cancelled'
+                        ? 'Cancelled'
+                        : `Pay Bill $${selectedBill.total.toFixed(2)}`}
+                  </Button>
+                </Box>
+              )}
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mt: 0.75, fontWeight: 600 }}>
-                {selectedBill.status === 'paid'
-                  ? 'Print fires the customer receipt on the configured printer.'
-                  : 'Method, tendered & change appear in the payment popup.'}
+                {selectedBill.items.length === 0 && selectedBill.status === 'open'
+                  ? 'No items — cancel or close to free the table.'
+                  : selectedBill.status === 'paid'
+                    ? 'Print fires the customer receipt on the configured printer.'
+                    : 'Method, tendered & change appear in the payment popup.'}
               </Typography>
             </Box>
           )}
         </Box>
       </Box>
+
+      {/* ─── M20 — Empty Bill Cancel/Close confirmation ─── */}
+      <Dialog
+        open={!!emptyBillAction}
+        onClose={() => setEmptyBillAction(null)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: `${SHAPE.dialog}px`, minWidth: 380 } }}
+      >
+        <DialogTitle sx={{ fontWeight: 800, pt: 3, pb: 1.5, fontSize: '1.5rem', textAlign: 'center' }}>
+          {emptyBillAction === 'cancel' ? 'Cancel Bill?' : 'Close Bill?'}
+        </DialogTitle>
+        <DialogContent sx={{ px: 3, pb: 1 }}>
+          <Typography variant="body2" color="text.secondary" align="center">
+            {emptyBillAction === 'cancel'
+              ? `Bill #${selectedBill?.number} will be cancelled and the table freed. No payment recorded.`
+              : `Bill #${selectedBill?.number} will be closed with $0 payment and the table freed.`}
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ p: 3, gap: 2 }}>
+          <Button
+            onClick={() => setEmptyBillAction(null)}
+            variant="contained"
+            color="warning"
+            size="large"
+            sx={{ borderRadius: `${SHAPE.button}px`, minHeight: 72, flex: 1, fontWeight: 700, fontSize: '1.1rem' }}
+          >
+            No
+          </Button>
+          <Button
+            onClick={async () => {
+              if (!selectedBill || !emptyBillAction) return;
+              try {
+                if (emptyBillAction === 'cancel') {
+                  await Orders.cancel(selectedBill.id, { reason: 'cashier cancel — empty bill' });
+                  setSnack({ msg: `Bill #${selectedBill.number} cancelled`, severity: 'success' });
+                } else {
+                  await Orders.close(selectedBill.id, { payment_method: 'cash', tendered: 0 });
+                  setSnack({ msg: `Bill #${selectedBill.number} closed`, severity: 'success' });
+                }
+                setEmptyBillAction(null);
+                reload();
+              } catch (e: any) {
+                const detail = e?.response?.data?.detail ?? e?.message ?? 'Failed';
+                setSnack({ msg: typeof detail === 'string' ? detail : JSON.stringify(detail), severity: 'error' });
+              }
+            }}
+            variant="contained"
+            color={emptyBillAction === 'cancel' ? 'error' : 'success'}
+            size="large"
+            sx={{ borderRadius: `${SHAPE.button}px`, minHeight: 72, flex: 1, fontWeight: 700, fontSize: '1.1rem' }}
+          >
+            {emptyBillAction === 'cancel' ? 'Yes, Cancel' : 'Yes, Close'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* ─── M32 — Open Bill confirmation popup ─── */}
       <Dialog

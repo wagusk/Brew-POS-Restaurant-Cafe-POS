@@ -243,14 +243,40 @@ def close_order(
     and the grand total. Permission + max-cap guards are enforced
     by the route handler before this service is called — see
     `api.orders.close_endpoint`.
+
+    M20-empty — an empty open bill (no items) can be closed directly
+    without kitchen acceptance. Records a $0 payment and frees the
+    table for reuse.
     """
     order = db.get(Order, order_id)
     if not order:
         raise ValueError("Order not found")
-    if order.status not in ("accepted", "ready", "served"):
+
+    is_empty_open = order.status == "open" and len(order.items) == 0
+    if not is_empty_open and order.status not in ("accepted", "ready", "served"):
         raise ValueError(
             f"Cannot close order in status '{order.status}' — kitchen must accept first"
         )
+
+    if is_empty_open:
+        # Empty bill — close with $0 payment, no kitchen flow needed
+        order.discount = 0.0
+        order.discount_reason = ""
+        order.subtotal = 0.0
+        order.tax = 0.0
+        order.total = 0.0
+        payment = Payment(
+            order=order,
+            method="cash",
+            amount=0.0,
+            tendered=0.0,
+            change=0.0,
+        )
+        order.payments.append(payment)
+        order.status = "paid"
+        db.commit()
+        db.refresh(order)
+        return order
 
     # Apply discount (negative amounts are silently clamped to 0)
     applied_discount = max(0.0, float(discount))
