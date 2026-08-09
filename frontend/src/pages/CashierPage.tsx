@@ -138,175 +138,69 @@ export default function CashierPage() {
 
   return (
     <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', bgcolor: 'surface.page' }}>
-      {/* HEADER */}
+      {/* HEADER — compact top bar */}
       <Box
         sx={{
-          px: 3,
-          py: 1.5,
-          borderBottom: '1px solid',
-          borderColor: 'border.default',
+          px: 3, py: 1.5,
+          borderBottom: '1px solid', borderColor: 'border.default',
           bgcolor: 'surface.paper',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 1.5,
+          display: 'flex', alignItems: 'center', gap: 1.5,
+          minHeight: 64,
         }}
       >
-        <Box
-          sx={{
-            width: 36, height: 36, borderRadius: 1.5,
-            bgcolor: 'role.cashier', color: 'common.white',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
-        >
+        <Box sx={{ width: 36, height: 36, borderRadius: `${SHAPE.card}px`, bgcolor: 'role.cashier', color: 'common.white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <PointOfSaleIcon sx={{ fontSize: 20 }} />
         </Box>
-        <Box>
-          <Typography variant="h5" sx={{ fontWeight: 700, lineHeight: 1.1 }}>
-            Cashier
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            {liveBills.length} open bill{liveBills.length === 1 ? '' : 's'} · $
-            {liveBills.reduce((s, b) => s + b.total, 0).toFixed(2)} due
-          </Typography>
-        </Box>
+        <Typography variant="h5" sx={{ fontWeight: 700, lineHeight: 1.1 }}>Cashier</Typography>
+        <Typography variant="caption" color="text.secondary">
+          {liveBills.length} open · ${liveBills.reduce((s, b) => s + b.total, 0).toFixed(2)} due
+        </Typography>
         <Box sx={{ flex: 1 }} />
-        {selectedTableId != null && (
-          <Chip
-            label={`Filtered: ${tables.find((t: Table) => t.id === selectedTableId)?.name ?? `Table ${selectedTableId}`}`}
-            onDelete={() => setSelectedTableId(null)}
-            color="primary"
-            variant="filled"
-            sx={{ fontWeight: 700, borderRadius: `${SHAPE.chip}px` }}
-          />
-        )}
         <Chip
           icon={<PrintOutlinedIcon sx={{ fontSize: 16 }} />}
           label={printerStatus ? `Printer: ${printerStatus.mode}${printerStatus.dry_run ? ' (dry)' : ''}` : 'Printer: checking…'}
           color={printerStatus && printerStatus.mode !== 'dummy' ? 'success' : 'default'}
-          variant="outlined"
-          size="small"
+          variant="outlined" size="small"
           sx={{ fontWeight: 700, borderRadius: `${SHAPE.chip}px` }}
         />
       </Box>
 
-      {/* 2-COLUMN BODY: floor plan (left, 70%) + bill list (right, 30%) */}
+      {/* BODY — 2 columns: floor plan (left) + bill view (right) */}
       <Box sx={{ flex: 1, display: 'flex', minHeight: 0 }}>
-        {/* LEFT — Table grid (70% of viewport) */}
-        <Box
-          sx={{
-            width: { xs: '100%', md: '70%' },
-            flexShrink: 0,
-            borderRight: { md: '1px solid' },
-            borderColor: 'border.default',
-            display: 'flex',
-            flexDirection: 'column',
-            bgcolor: 'surface.paper',
-          }}
-        >
-          <Box
-            sx={{
-              px: 2, py: 1.25,
-              borderBottom: '1px solid',
-              borderColor: 'border.default',
-              display: 'flex', alignItems: 'center', gap: 1,
-            }}
-          >
+        {/* LEFT — Floor plan grid */}
+        <Box sx={{ width: { xs: '100%', md: '70%' }, flexShrink: 0, borderRight: { md: '1px solid' }, borderColor: 'border.default', display: 'flex', flexDirection: 'column', bgcolor: 'surface.paper' }}>
+          <Box sx={{ px: 2, py: 1.25, borderBottom: '1px solid', borderColor: 'border.default', display: 'flex', alignItems: 'center', gap: 1 }}>
             <HomeWorkIcon sx={{ fontSize: 18, color: 'role.cashier' }} />
-            <Typography sx={{ fontWeight: 800, letterSpacing: 0.5, fontSize: '0.85rem', color: 'text.primary' }}>
-              FLOOR PLAN
-            </Typography>
-            <Box sx={{ flex: 1 }} />
-            <Chip
-              label={`${tablesSorted.length} tables`}
-              size="small"
-              variant="outlined"
-              sx={{ fontWeight: 700 }}
-            />
+            <Typography sx={{ fontWeight: 800, letterSpacing: 0.5, fontSize: '0.85rem' }}>FLOOR PLAN</Typography>
           </Box>
           <Box sx={{ p: 2, overflowY: 'auto', flex: 1 }}>
-            <Box
-              sx={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
-                gap: 1.25,
-              }}
-            >
+            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 1.25 }}>
               {tablesSorted.map((t) => {
                 const live = liveBillByTable.get(t.id);
                 const isOpenBill = !!live;
                 const isSelected = selectedTableId === t.id;
-                const billCount = liveBills.filter((b) => b.table_id === t.id).length;
                 return (
                   <Paper
                     key={t.id}
-                    onClick={() => {
-                      if (isOpenBill) {
-                        setSelectedTableId((cur) => (cur === t.id ? null : t.id));
-                      } else {
-                        setOpeningBill(t);
-                      }
-                    }}
+                    onClick={() => { if (isOpenBill) setSelectedTableId((cur) => (cur === t.id ? null : t.id)); else setOpeningBill(t); }}
                     sx={{
-                      p: 1.5,
-                      cursor: 'pointer',
-                      borderRadius: `${SHAPE.tile}px`,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'flex-start',
-                      gap: 0.5,
-                      minHeight: 96,
+                      p: 1.5, cursor: 'pointer',
+                      borderRadius: `${SHAPE.card}px`,
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                      minHeight: 96, gap: 0.5,
                       bgcolor: isOpenBill ? 'role.cashier' : 'surface.paper',
                       color: isOpenBill ? 'common.white' : 'text.primary',
-                      border: '2px solid',
-                      borderColor: isSelected
-                        ? (isOpenBill ? 'common.white' : 'role.cashier')
-                        : 'border.default',
-                      transition: 'transform 0.12s, border-color 0.12s',
+                      border: '2px solid', borderColor: isSelected ? (isOpenBill ? 'common.white' : 'role.cashier') : 'border.default',
+                      transition: 'transform 0.12s',
                       '&:hover': { transform: 'translateY(-2px)' },
                       '&:active': { transform: 'scale(0.97)' },
                     }}
                   >
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, width: '100%' }}>
-                      <Box
-                        sx={{
-                          width: 32, height: 32, borderRadius: `${SHAPE.button}px`,
-                          bgcolor: isOpenBill ? '#ffffff22' : 'role.cashier',
-                          color: 'common.white',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          flexShrink: 0,
-                        }}
-                      >
-                        <TableRestaurantIcon sx={{ fontSize: 18 }} />
-                      </Box>
-                      <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography variant="subtitle1" sx={{ fontWeight: 800, lineHeight: 1.05 }}>
-                          {t.name}
-                        </Typography>
-                        <Typography
-                          variant="caption"
-                          sx={{ fontWeight: 600, opacity: isOpenBill ? 0.92 : 0.7 }}
-                        >
-                          {isOpenBill
-                            ? `${live!.status.toUpperCase()} · $${live!.total.toFixed(2)}`
-                            : `${t.seats} seats · Empty`}
-                        </Typography>
-                      </Box>
-                    </Box>
-                    <Chip
-                      size="small"
-                      label={isOpenBill ? `OpenBill · #${live!.number}` : 'Empty'}
-                      sx={{
-                        bgcolor: isOpenBill ? '#ffffff22' : 'rgba(0,0,0,0.05)',
-                        color: isOpenBill ? 'common.white' : 'text.primary',
-                        border: 'none',
-                        fontWeight: 700,
-                      }}
-                    />
-                    {isOpenBill && billCount > 1 && (
-                      <Typography variant="caption" sx={{ opacity: 0.85, fontWeight: 600 }}>
-                        +{billCount - 1} older bill{billCount - 1 === 1 ? '' : 's'}
-                      </Typography>
-                    )}
+                    <TableRestaurantIcon sx={{ fontSize: 24, opacity: isOpenBill ? 0.9 : 0.6 }} />
+                    <Typography variant="h6" sx={{ fontWeight: 800, fontSize: '1.2rem', lineHeight: 1.1 }}>{t.name}</Typography>
+                    <Typography sx={{ fontWeight: 700, fontSize: '1.1rem', opacity: isOpenBill ? 0.95 : 0.7 }}>
+                      {isOpenBill ? `$${live!.total.toFixed(2)}` : 'Empty'}
+                    </Typography>
                   </Paper>
                 );
               })}
@@ -314,196 +208,90 @@ export default function CashierPage() {
           </Box>
         </Box>
 
-        {/* RIGHT — Permanent bill view (30% width, always visible)
-             Click a table → its bill appears here. The Pay button stays
-             pinned below the scrollable item list so the cashier can
-             close the bill in one tap. */}
-        <Box
-          sx={{
-            width: '30%',
-            minWidth: 320,
-            flexShrink: 0,
-            borderLeft: { md: '1px solid' },
-            borderColor: 'border.default',
-            display: 'flex',
-            flexDirection: 'column',
-            bgcolor: 'surface.paper',
-          }}
-        >
-          <Box
-            sx={{
-              px: 2, py: 1.25,
-              borderBottom: '1px solid',
-              borderColor: 'border.default',
-              display: 'flex', alignItems: 'center', gap: 1,
-            }}
-          >
-            <Typography sx={{ fontWeight: 800, letterSpacing: 0.5, fontSize: '0.85rem', color: 'text.primary' }}>
+        {/* RIGHT — Bill view */}
+        <Box sx={{ width: '30%', minWidth: 320, flexShrink: 0, borderLeft: { md: '1px solid' }, borderColor: 'border.default', display: 'flex', flexDirection: 'column', bgcolor: 'surface.paper' }}>
+          <Box sx={{ px: 2, py: 1.25, borderBottom: '1px solid', borderColor: 'border.default', display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography sx={{ fontWeight: 800, letterSpacing: 0.5, fontSize: '0.85rem' }}>
               {selectedTableId == null ? 'NO TABLE SELECTED' : 'CURRENT BILL'}
             </Typography>
-            <Box sx={{ flex: 1 }} />
-            {selectedTableId != null && (
-              <Chip
-                size="small"
-                variant="outlined"
-                label={tables.find((t: Table) => t.id === selectedTableId)?.name ?? `Table ${selectedTableId}`}
-                sx={{ fontWeight: 700 }}
-              />
-            )}
           </Box>
           <Box sx={{ flex: 1, overflowY: 'auto', p: 2 }}>
             {!selectedBill ? (
               <Box sx={{ display: 'grid', placeItems: 'center', minHeight: '60vh' }}>
-                <Box sx={{ textAlign: 'center', color: 'text.secondary' }}>
-                  <Typography variant="body2" sx={{ fontWeight: 700, mb: 0.5 }}>
-                    {selectedTableId == null
-                      ? 'Pick a table on the left to see its bill.'
-                      : 'This table has no open bill right now.'}
-                  </Typography>
-                  <Typography variant="caption">
-                    Tap an OpenBill tile to open its bill here.
-                  </Typography>
-                </Box>
+                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 700 }}>
+                  {selectedTableId == null ? 'Pick a table on the left.' : 'No open bill.'}
+                </Typography>
               </Box>
             ) : (
               <BillPanel bill={selectedBill} tableName={tables.find((t: Table) => t.id === selectedBill.table_id)?.name} onReprint={(msg, severity) => setSnack({ msg, severity })} />
             )}
           </Box>
-          {/* M25 — sticky Pay / Print bar. Two-button row at the bottom of
-              the cashier's bill column:
-                • Left  — "Print" (re-print customer receipt), visible
-                  only when the bill is PAID. Same backend endpoint
-                  (POST /api/orders/{id}/print-receipt). Surfaces a
-                  snack with the byte count so the cashier can see the
-                  hardware loop (bytes_written = how many ESC/POS bytes
-                  actually hit the printer).
-                • Right — "Pay Bill" (open the payment popup) or "Paid"
-                  for already-paid bills.
-              Both touch-sized (minHeight 56) so the cashier can hit
-              either without looking. */}
-          {selectedBill && (
-            <Box sx={{ p: 2, borderTop: '1px solid', borderColor: 'border.default', bgcolor: 'surface.paper' }}>
-              {selectedBill.items.length === 0 && selectedBill.status === 'open' ? (
-                // M20 — Empty bill: Cancel or Close without payment
-                <Box sx={{ display: 'flex', gap: 1 }}>
-                  <Button
-                    variant="contained"
-                    size="large"
-                    startIcon={<CancelIcon />}
-                    onClick={() => setEmptyBillAction('cancel')}
-                    sx={{
-                      flex: 1,
-                      bgcolor: '#d32f2f',
-                      borderRadius: `${SHAPE.button}px`,
-                      minHeight: 56,
-                      fontWeight: 800,
-                      fontSize: '1.05rem',
-                      boxShadow: 'none',
-                      '&:hover': { bgcolor: '#b71c1c' },
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    variant="contained"
-                    size="large"
-                    startIcon={<CheckCircleIcon />}
-                    onClick={() => setEmptyBillAction('close')}
-                    sx={{
-                      flex: 1,
-                      bgcolor: '#2e7d32',
-                      borderRadius: `${SHAPE.button}px`,
-                      minHeight: 56,
-                      fontWeight: 800,
-                      fontSize: '1.05rem',
-                      boxShadow: 'none',
-                      '&:hover': { bgcolor: '#1b5e20' },
-                    }}
-                  >
-                    Close
-                  </Button>
-                </Box>
-              ) : (
-                // Existing flow — bill has items
-                <Box sx={{ display: 'flex', gap: 1 }}>
-                  {selectedBill.status === 'paid' && (
-                    <Button
-                      variant="contained"
-                      size="large"
-                      startIcon={reprintingBill
-                        ? <CircularProgress size={16} sx={{ color: 'common.white' }} />
-                        : <PrintOutlinedIcon />}
-                      onClick={async () => {
-                        setReprintingBill(true);
-                        try {
-                          const res = await Orders.printReceipt(selectedBill.id);
-                          setSnack({
-                            msg: res.ok
-                              ? `Receipt reprinted · ${res.bytes_written} bytes · ${res.elapsed_ms ?? 0}ms`
-                              : `Receipt failed · ${res.error ?? 'unknown error'}`,
-                            severity: res.ok ? 'success' : 'error',
-                          });
-                        } catch (e: any) {
-                          const detail = e?.response?.data?.detail ?? e?.message ?? 'Reprint request failed';
-                          setSnack({
-                            msg: typeof detail === 'string' ? detail : JSON.stringify(detail),
-                            severity: 'error',
-                          });
-                        } finally {
-                          setReprintingBill(false);
-                        }
-                      }}
-                      disabled={reprintingBill}
-                      sx={{
-                        flex: 1,
-                        bgcolor: '#2b6cff',
-                        borderRadius: `${SHAPE.button}px`,
-                        minHeight: 56,
-                        fontWeight: 800,
-                        fontSize: '1.0rem',
-                        boxShadow: 'none',
-                        '&:hover': { bgcolor: '#2b6cff', filter: 'brightness(0.92)' },
-                      }}
-                    >
-                      {reprintingBill ? 'Printing…' : 'Print'}
-                    </Button>
-                  )}
-                  <Button
-                    fullWidth
-                    variant="contained"
-                    size="large"
-                    startIcon={<CheckCircleIcon />}
-                    onClick={() => setPaying(selectedBill)}
-                    disabled={selectedBill.status === 'paid' || selectedBill.status === 'cancelled'}
-                    sx={{
-                      flex: selectedBill.status === 'paid' ? 1 : 1,
-                      bgcolor: 'role.cashier',
-                      borderRadius: `${SHAPE.button}px`,
-                      minHeight: 56,
-                      fontWeight: 800,
-                      fontSize: '1.05rem',
-                      boxShadow: 'none',
-                      '&:hover': { bgcolor: 'role.cashier', filter: 'brightness(0.92)' },
-                    }}
-                  >
-                    {selectedBill.status === 'paid'
-                      ? 'Paid'
-                      : selectedBill.status === 'cancelled'
-                        ? 'Cancelled'
-                        : `Pay Bill $${selectedBill.total.toFixed(2)}`}
-                  </Button>
-                </Box>
-              )}
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mt: 0.75, fontWeight: 600 }}>
-                {selectedBill.items.length === 0 && selectedBill.status === 'open'
-                  ? 'No items — cancel or close to free the table.'
-                  : selectedBill.status === 'paid'
-                    ? 'Print fires the customer receipt on the configured printer.'
-                    : 'Method, tendered & change appear in the payment popup.'}
+        </Box>
+      </Box>
+
+      {/* BOTTOM ACTION BAR — full width, same height as header */}
+      <Box
+        sx={{
+          px: 3, py: 1.5,
+          borderTop: '1px solid', borderColor: 'border.default',
+          bgcolor: 'surface.paper',
+          display: 'flex', alignItems: 'center', gap: 1.5,
+          minHeight: 64,
+        }}
+      >
+        {selectedBill ? (
+          <>
+            {/* Bill total display */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', color: 'text.secondary' }}>TOTAL</Typography>
+              <Typography sx={{ fontWeight: 800, fontSize: '1.6rem', fontFamily: 'monospace', color: 'role.cashier' }}>
+                ${selectedBill.total.toFixed(2)}
               </Typography>
             </Box>
-          )}
-        </Box>
+            <Box sx={{ flex: 1 }} />
+            {/* Action buttons */}
+            {selectedBill.items.length === 0 && selectedBill.status === 'open' ? (
+              <>
+                <Button variant="contained" size="large" startIcon={<CancelIcon />} onClick={() => setEmptyBillAction('cancel')}
+                  sx={{ bgcolor: '#d32f2f', borderRadius: `${SHAPE.card}px`, minHeight: 56, fontWeight: 800, fontSize: '1.05rem', boxShadow: 'none', '&:hover': { bgcolor: '#b71c1c' } }}>
+                  Cancel
+                </Button>
+                <Button variant="contained" size="large" startIcon={<CheckCircleIcon />} onClick={() => setEmptyBillAction('close')}
+                  sx={{ bgcolor: '#2e7d32', borderRadius: `${SHAPE.card}px`, minHeight: 56, fontWeight: 800, fontSize: '1.05rem', boxShadow: 'none', '&:hover': { bgcolor: '#1b5e20' } }}>
+                  Close
+                </Button>
+              </>
+            ) : (
+              <>
+                {selectedBill.status === 'paid' && (
+                  <Button variant="contained" size="large" startIcon={reprintingBill ? <CircularProgress size={16} sx={{ color: 'common.white' }} /> : <PrintOutlinedIcon />}
+                    onClick={async () => {
+                      setReprintingBill(true);
+                      try {
+                        const res = await Orders.printReceipt(selectedBill.id);
+                        setSnack({ msg: res.ok ? `Receipt reprinted · ${res.bytes_written} bytes` : `Receipt failed · ${res.error ?? 'unknown'}`, severity: res.ok ? 'success' : 'error' });
+                      } catch (e: any) {
+                        setSnack({ msg: e?.response?.data?.detail ?? e?.message ?? 'Reprint failed', severity: 'error' });
+                      } finally { setReprintingBill(false); }
+                    }}
+                    disabled={reprintingBill}
+                    sx={{ bgcolor: '#2b6cff', borderRadius: `${SHAPE.card}px`, minHeight: 56, fontWeight: 800, fontSize: '1rem', boxShadow: 'none', '&:hover': { bgcolor: '#2b6cff', filter: 'brightness(0.92)' } }}>
+                    {reprintingBill ? 'Printing…' : 'Print'}
+                  </Button>
+                )}
+                <Button variant="contained" size="large" startIcon={<CheckCircleIcon />} onClick={() => setPaying(selectedBill)}
+                  disabled={selectedBill.status === 'paid' || selectedBill.status === 'cancelled'}
+                  sx={{ bgcolor: '#2e7d32', borderRadius: `${SHAPE.card}px`, minHeight: 56, fontWeight: 800, fontSize: '1.05rem', boxShadow: 'none', '&:hover': { bgcolor: '#1b5e20' } }}>
+                  {selectedBill.status === 'paid' ? 'Paid' : selectedBill.status === 'cancelled' ? 'Cancelled' : 'Pay Bill'}
+                </Button>
+              </>
+            )}
+          </>
+        ) : (
+          <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Typography color="text.secondary" sx={{ fontWeight: 600 }}>Select a table to see actions</Typography>
+          </Box>
+        )}
       </Box>
 
       {/* ─── M20 — Empty Bill Cancel/Close confirmation ─── */}
