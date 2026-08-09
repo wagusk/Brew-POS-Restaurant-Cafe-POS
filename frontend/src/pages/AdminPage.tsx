@@ -755,7 +755,13 @@ function ReportsWorkspace({ color, stats }: { color: string; stats: any }) {
                               <TableRow
                                 hover
                                 onClick={() => setExpandedBill(isExpanded ? null : bill.order_id)}
-                                sx={{ cursor: 'pointer' }}
+                                sx={{
+                                  cursor: 'pointer',
+                                  bgcolor: bill.status === 'paid' ? 'success.100' : bill.status === 'void' ? 'error.100' : 'inherit',
+                                  '&:hover': {
+                                    bgcolor: bill.status === 'paid' ? 'success.200' : bill.status === 'void' ? 'error.200' : 'action.hover',
+                                  },
+                                }}
                               >
                                 <TableCell>
                                   {isExpanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
@@ -770,6 +776,8 @@ function ReportsWorkspace({ color, stats }: { color: string; stats: any }) {
                                     size="small" 
                                     label={bill.status} 
                                     color={bill.status === 'paid' ? 'success' : bill.status === 'void' ? 'error' : bill.status === 'open' ? 'warning' : 'default'}
+                                    variant="filled"
+                                    sx={{ fontWeight: 700 }}
                                   />
                                 </TableCell>
                                 <TableCell sx={{ textTransform: 'capitalize' }}>{bill.payment_method || '-'}</TableCell>

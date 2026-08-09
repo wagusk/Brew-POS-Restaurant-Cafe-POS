@@ -576,6 +576,8 @@ $ python smoke_test_crud.py                              → 🎉 ALL CRUD SMOKE
   - Backend `get_bill_history`: default view shows paid + void, cancelled bills EXCLUDED
   - Frontend `ReportStatus` type: replaced 'cancelled' with 'void'
   - Voided orders stay in DB (status=void), visible in history, excluded from reports
+  - Frontend bill history: highlighted rows — `success.100` for paid, `error.100` for void (with darker hover)
+  - Frontend Chip status pill: `variant="filled"` + `fontWeight: 700` for better readability
   - Verified: cancelled bills disappear from history, voided bills visible in history
   - Ad-hoc verifier 7/7 PASS
 
