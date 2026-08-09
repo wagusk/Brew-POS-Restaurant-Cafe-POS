@@ -33,7 +33,7 @@ Then open `http://localhost:8000` on any terminal.
 - **Empty bill handling** — Empty open bills are deleted entirely (no record, no payment, bill numbers monotonic).
 - **Stats** — Today orders, revenue, average ticket, open tickets.
 - **Reports** — Sales summary, category breakdown, item sales, payment methods, bill history (paid + void, cancelled excluded).
-- **Taxes** — Multiple taxes with custom names and rates (VAT, Service, Tourism, etc.). They stack to calculate total tax on every order.
+- **Taxes** — Multiple taxes with custom names and rates (VAT, Service, Tourism, etc.). They stack to calculate total tax on every order. Each tax can be configured independently with any percentage.
 - **Discounts** — Fixed or percent presets configured by admin; cashier applies at checkout.
 - **Single-file SQLite** — `backend/brewpos.db`. Portable, no external DB.
 - **No Docker required** — Pure Python + Node. Runs anywhere.
