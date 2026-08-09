@@ -29,6 +29,8 @@ from app.core.config import (
     get_tax_rate,
     get_taxes,
     set_taxes,
+    get_text_size,
+    set_text_size,
     set_active_db_url,
     reset_persisted_settings,
     get_discount_policy,
@@ -83,14 +85,13 @@ class DatabaseUrlIn(BaseModel):
 class SettingsOut(BaseModel):
     tax_rate: float
     taxes: list[dict]
+    text_size: float
     database_url: str
     default_database_url: str
-    db_kind: str           # 'sqlite' | 'postgresql' | 'mysql' | 'other'
+    db_kind: str
     db_file_exists: bool
     product_count: int
     user_count: int
-    # M21 — discount policy inline so the unified "Tax & Discounts"
-    # admin menu only needs one GET to render both sections.
     discount_policy: dict
 
 
@@ -137,6 +138,7 @@ def _build_settings_out(db: Session) -> SettingsOut:
     return SettingsOut(
         tax_rate=get_tax_rate(),
         taxes=get_taxes(),
+        text_size=get_text_size(),
         database_url=url,
         default_database_url=f"sqlite:///{DB_PATH}",
         db_kind=_kind(url),
@@ -156,6 +158,13 @@ def get_settings(db: Session = Depends(get_db), user: UserModel = Depends(requir
 @router.put("/tax", response_model=SettingsOut)
 def update_tax(payload: TaxIn, db: Session = Depends(get_db), user: UserModel = Depends(require_role("admin"))):
     set_taxes(payload.taxes)
+    return _build_settings_out(db)
+
+
+@router.put("/text-size", response_model=SettingsOut)
+def update_text_size(payload: dict, db: Session = Depends(get_db), user: UserModel = Depends(require_role("admin"))):
+    size = float(payload.get("text_size", 1.0))
+    set_text_size(size)
     return _build_settings_out(db)
 
 

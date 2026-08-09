@@ -40,14 +40,23 @@ def get_tax_rate() -> float:
     """Total tax rate — sum of all active tax rates."""
     return sum(float(t.get("rate", 0)) for t in get_taxes())
 
-# ── Discount policy defaults (M21) ──────────────────────────────────
-# `max_discount_pct` is the per-bill cap expressed as a fraction of
-# subtotal. 0.50 means a cashier cannot discount more than 50% of the
-# pre-tax subtotal without admin role. `presets` are quick-pick chips
-# in the PaymentDialog (label + fixed dollar amount). Roles whose
-# default permissions include `discount.apply` can apply ANY discount
-# up to the cap; everyone else can only apply $0. Admins always have
-# the permission and bypass the cap.
+# ── UI scale defaults ─────────────────────────────────────────────
+# Text size is a global multiplier (0.8 = small, 1.0 = default, 1.2 = large).
+# Admin can adjust in Settings. Applied via theme typography.
+DEFAULT_TEXT_SIZE = 1.0
+
+
+def get_text_size() -> float:
+    return float(_load_persisted().get("text_size", DEFAULT_TEXT_SIZE))
+
+
+def set_text_size(size: float) -> None:
+    data = _load_persisted()
+    data["text_size"] = max(0.8, min(1.5, float(size)))
+    _persist(data)
+
+
+# ── Discount policy defaults (M21) ───────────────────────────────
 DEFAULT_DISCOUNT_POLICY = {
     "max_discount_pct": 0.50,
     # M21.1 — each preset is now `{label, mode, value}`. `mode` is

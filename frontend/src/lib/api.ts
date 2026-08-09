@@ -310,6 +310,7 @@ export interface TaxItem {
 export interface SettingsPayload {
   tax_rate: number;
   taxes: TaxItem[];
+  text_size: number;
   database_url: string;
   default_database_url: string;
   db_kind: 'sqlite' | 'postgresql' | 'mysql' | 'other';
@@ -337,4 +338,6 @@ export const Settings = {
   exportDatabaseUrl: () => '/api/admin/settings/database/export',
   importDatabase: (contents_b64: string) =>
     api.post<SettingsPayload>('/admin/settings/database/import', { contents_b64 }).then((r) => r.data),
+  setTextSize: (size: number) =>
+    api.put<SettingsPayload>('/admin/settings/text-size', { text_size: size }).then((r) => r.data),
 };

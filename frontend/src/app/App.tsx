@@ -1,12 +1,14 @@
-import { Suspense, lazy, useEffect } from 'react';
+import { Suspense, lazy, useEffect, useState, useMemo } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { Box, Button, CircularProgress, Typography } from '@mui/material';
+import { Box, Button, CircularProgress, Typography, ThemeProvider, createTheme } from '@mui/material';
 
 import { useAppSelector, useAppDispatch } from '../store/hooks';
 import { setMenu } from '../store/menuSlice';
-import { Menu } from '../lib/api';
+import { Menu, Settings } from '../lib/api';
 import { ws } from '../lib/ws';
 import { hasPermission, type Permission } from '../lib/permissions';
+import { theme as baseTheme } from '../theme';
+import type { SettingsPayload } from '../lib/api';
 import type { User } from '../types';
 
 import Shell from '../components/Shell';
@@ -152,6 +154,7 @@ function NoAccess() {
 export function App() {
   const dispatch = useAppDispatch();
   const user = useAppSelector((state) => state.auth.user);
+  const [textSize, setTextSize] = useState(1.0);
 
   useEffect(() => {
     ws.connect();
@@ -164,5 +167,23 @@ export function App() {
     });
   }, [user, dispatch]);
 
-  return <RoleRouter />;
+  useEffect(() => {
+    Settings.get().then((s: SettingsPayload) => {
+      if (s.text_size) setTextSize(s.text_size);
+    }).catch(() => {});
+  }, []);
+
+  const theme = useMemo(() => createTheme({
+    ...baseTheme,
+    typography: {
+      ...baseTheme.typography,
+      fontSize: Math.round(14 * textSize),
+    },
+  }), [textSize]);
+
+  return (
+    <ThemeProvider theme={theme}>
+      <RoleRouter />
+    </ThemeProvider>
+  );
 }
