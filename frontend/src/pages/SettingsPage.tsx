@@ -1633,6 +1633,41 @@ function TaxDiscountsWorkspace({ color }: { color: string }) {
         </Typography>
 
       </Paper>
+      {/* ───── TEXT SIZE SECTION ───── */}
+      <Paper sx={{ p: 2.5, borderRadius: `${SHAPE.card}px`, borderTop: '4px solid', borderTopColor: color }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+          <PercentIcon sx={{ color }} />
+          <Typography sx={{ fontWeight: 700, fontSize: '1.05rem' }}>Text Size</Typography>
+        </Box>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Adjust the overall UI text size. Applies to all pages after save.
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={() => {
+              const next = Math.max(0.8, (settings?.text_size ?? 1.0) - 0.1);
+              Settings.setTextSize(next).then(setSettings);
+            }}
+          >
+            A-
+          </Button>
+          <Typography sx={{ fontWeight: 700, minWidth: 60, textAlign: 'center' }}>
+            {((settings?.text_size ?? 1.0) * 100).toFixed(0)}%
+          </Typography>
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={() => {
+              const next = Math.min(1.5, (settings?.text_size ?? 1.0) + 0.1);
+              Settings.setTextSize(next).then(setSettings);
+            }}
+          >
+            A+
+          </Button>
+        </Box>
+      </Paper>
       {/* ───── DISCOUNT PRESETS SECTION ───── */}
       <Paper sx={{ p: 2.5, borderRadius: `${SHAPE.card}px`, borderTop: '4px solid', borderTopColor: color }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
