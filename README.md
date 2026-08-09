@@ -414,9 +414,10 @@ The cashier can **open a bill first** (empty, status=`open`), then the waiter ad
 - [x] Reports (sales, categories, items, payments, bill history)
 - [x] Database management (URL editor, reload, reset, export, import)
 - [x] Discount presets (fixed + percent)
-- [x] Printer configuration (network/USB/dummy, multi-line header/footer, printer status chip)
-- [x] Empty bill handling (delete entirely, no record kept)
-- [x] Permission-based access control
+- [x] Printer integration + multi-line receipts (M30)
+- [x] Empty bill handling — delete entirely, bill numbers recycled (M30)
+- [x] Bill history — cancelled excluded, void highlighted (M31)
+- [x] Multiple taxes with custom names + rates (M31)
 - [x] Dynamic role management
 - [x] Single-bill-per-table enforcement
 - [x] Cashier "Open Bill" popup

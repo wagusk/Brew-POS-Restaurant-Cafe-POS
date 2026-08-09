@@ -560,8 +560,19 @@ $ python smoke_test_crud.py                              → 🎉 ALL CRUD SMOKE
   - Cashier printer status chip (polls every 10s, shows mode + dry_run indicator)
   - Ad-hoc verifier 8/8 PASS + byte-level multi-line receipt check PASS
   - All lint + tsc + build checks pass (0/0); backend import OK; 64 → 65 routes (+printer/status)
-- [ ] Remaining M20 work (next session): none — all items shipped
-- [x] M20 empty bill delete entirely (2026-08-09):
+### M30 — Printer integration + empty bill handling (2026-08-09)
+
+- [x] Printer UI + multi-line receipt end-to-end (2026-08-09):
+  - Admin `PrinterWorkspace` (mode radios, network/usb target, header_lines / footer_lines editors, cut_paper toggle, auto_print switches, Test Print button)
+  - Cashier "Reprint receipt" button on paid orders (calls `Orders.printReceipt(id)`)
+  - Kitchen/Bar "Reprint ticket" buttons (parity — both stations have reprint)
+  - Wire `header_lines` / `footer_lines` / `cut_paper` from `printer.config` through `tickets.build_customer_receipt` (verified: all 3 header + 2 footer lines render in receipt bytes)
+  - Fix `_header_text` / `_footer_text` helpers (read legacy keys stripped during migration → receipt was getting no header/footer)
+  - Public `/api/printer/status` endpoint (mode + dry_run only, no secrets)
+  - Cashier printer status chip (polls every 10s, shows mode + dry_run indicator)
+  - Ad-hoc verifier 8/8 PASS + byte-level multi-line receipt check PASS
+  - All lint + tsc + build checks pass (0/0); backend import OK; 64 → 65 routes (+printer/status)
+- [x] Empty bill delete entirely (2026-08-09):
   - Backend `close_order`: empty open bills are DELETED entirely (no record, no payment, no audit log)
   - Backend `cancel_order`: empty open bills are DELETED entirely (same path — delete, not cancel status)
   - Backend `_next_order_number`: reuses gaps from cancelled/deleted bills (lowest missing number starting from 1)
@@ -572,7 +583,8 @@ $ python smoke_test_crud.py                              → 🎉 ALL CRUD SMOKE
   - Confirmation popup: title + explanation + Yes/Delete button
   - Verified end-to-end: open empty → delete → bill 404 → table freed → next bill gets next sequential number
   - Ad-hoc verifier 8/8 PASS; build clean
-- [x] Multiple taxes (2026-08-09):
+
+### M31 — Bill history + multiple taxes (2026-08-09)
   - Backend `core/config.py`: replaced single `tax_rate` with `taxes` list (name + rate)
   - Backend `get_tax_rate()` returns sum of all tax rates
   - Backend `api/settings.py`: `TaxIn` schema accepts `taxes` list, `SettingsOut` includes `taxes`
