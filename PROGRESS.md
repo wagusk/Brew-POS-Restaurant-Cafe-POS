@@ -580,7 +580,7 @@ $ python smoke_test_crud.py                              → 🎉 ALL CRUD SMOKE
   - Frontend `SettingsPage.tsx`: Tax workspace now has CRUD for multiple taxes (add/edit/remove)
   - Verified: 3 taxes (VAT 10%, Service 5%, Tourism 2.5%) sum to 17.5%, order tax calculated correctly
   - Ad-hoc verifier 7/7 PASS
-- [x] M20 bill history cancelled/void (2026-08-09):
+- [x] Bill history cancelled/void (2026-08-09):
   - Backend `get_bill_history`: default view shows paid + void, cancelled bills EXCLUDED
   - Frontend `ReportStatus` type: replaced 'cancelled' with 'void'
   - Voided orders stay in DB (status=void), visible in history, excluded from reports
