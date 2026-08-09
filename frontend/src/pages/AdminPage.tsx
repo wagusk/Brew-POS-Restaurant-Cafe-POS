@@ -319,7 +319,7 @@ export default function AdminPage() {
 // REPORTS WORKSPACE — sales, items, payments, bills with pie charts
 // ─────────────────────────────────────────────────────────────────────
 type ReportPeriod = 'day' | 'week' | 'month' | 'all' | 'custom';
-type ReportStatus = 'all' | 'paid' | 'cancelled' | 'open' | 'accepted' | 'preparing' | 'ready' | 'served';
+type ReportStatus = 'all' | 'paid' | 'void' | 'open' | 'accepted' | 'preparing' | 'ready' | 'served';
 type ReportTab = 'stats' | 'sales' | 'items' | 'payments' | 'bills';
 
 const REPORT_TABS: { key: ReportTab; label: string }[] = [

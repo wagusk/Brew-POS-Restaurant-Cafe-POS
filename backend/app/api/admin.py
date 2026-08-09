@@ -627,9 +627,9 @@ def get_bill_history(
         query = query.filter(Order.status == status)
     else:
         # Exclude the in-progress noise (open/accepted/preparing/ready/served)
-        # unless the caller asked for everything. "all" surfaces even those.
+        # and cancelled bills. Show paid + void. "all" surfaces everything.
         if not (status == "all"):
-            query = query.filter(Order.status.in_(("paid", "cancelled")))
+            query = query.filter(Order.status.in_(("paid", "void")))
 
     orders = query.order_by(Order.created_at.desc()).limit(limit).all()
     
