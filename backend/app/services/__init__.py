@@ -383,6 +383,35 @@ def today_stats(db: Session) -> dict:
     }
 
 
+def void_order(db: Session, order_id: int, reason: str, user: User) -> Order:
+    """Admin voids an order. Status → 'void'. Totals zeroed.
+
+    A voided order is excluded from all reports and displays. Requires order.void permission
+    (enforced by the route handler). Paid orders can also be voided — refund is a separate workflow.
+    """
+    order = db.get(Order, order_id)
+    if not order:
+        raise ValueError("Order not found")
+    if order.status == "void":
+        raise ValueError("Order is already voided")
+
+    stamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
+    for item in order.items:
+        if item.status not in ("cancelled",):
+            item.status = "void"
+        item.notes = (item.notes or "") + f"\n[VOIDED {stamp}: {reason}]"
+    order.status = "void"
+    order.notes = (order.notes or "") + f"\n[VOIDED {stamp}: {reason} by {user.name}]"
+    order.subtotal = 0.0
+    order.tax = 0.0
+    order.total = 0.0
+    order.discount = 0.0
+    order.discount_reason = ""
+    db.commit()
+    db.refresh(order)
+    return order
+
+
 def cancel_order(db: Session, order_id: int, reason: str, item_id: int | None = None) -> Order:
     """Kitchen rejects an order (sold out, wrong order, etc.) or a single line item.
 

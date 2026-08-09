@@ -37,6 +37,7 @@ Then open `http://localhost:8000` on any terminal.
 - **No Docker required** — Pure Python + Node. Runs anywhere.
 - **Admin Panel** — Full CRUD for users, products, categories, tables, roles, tax, discounts, printer config.
 - **Database management** — URL editor, reload engine, reset & seed, export/import backup.
+- **Multilingual UI** — English and Bahasa Indonesia included. Easy to extend with new languages.
 
 ---
 
@@ -202,7 +203,11 @@ Brew-POS/
 │   │   ├── lib/
 │   │   │   ├── api.ts           # Axios + endpoints
 │   │   │   ├── ws.ts            # WebSocket client with reconnect
-│   │   │   └── permissions.ts   # hasPermission(user, perm) helper
+│   │   │   ├── permissions.ts   # hasPermission(user, perm) helper
+│   │   │   └── i18n/            # Multilingual translations
+│   │   │       ├── en.ts        # English strings
+│   │   │       ├── id.ts        # Bahasa Indonesia strings
+│   │   │       └── index.ts     # t() helper + locale management
 │   │   ├── theme/index.ts       # MUI light theme
 │   │   ├── types/index.ts       # Shared TS types
 │   │   └── index.css
@@ -320,6 +325,14 @@ curl -X POST http://localhost:8000/api/admin/products \
   -d '{"name":"Cortado","price":3.25,"category_id":1}'
 ```
 
+### Add a new language
+
+1. Create a new file in `frontend/src/lib/i18n/` (e.g. `fr.ts` for French)
+2. Export a `Translations` object with all keys from `en.ts` translated
+3. Add the locale to `Locale` type in `index.ts`
+4. Add the import and dictionary lookup in the `t()` function
+5. Add the option to the `Select` dropdown in `Shell.tsx`
+
 ---
 
 ## API Reference
@@ -398,6 +411,7 @@ The cashier can **open a bill first** (empty, status=`open`), then the waiter ad
 - [x] Dynamic role management
 - [x] Single-bill-per-table enforcement
 - [x] Cashier "Open Bill" popup
+- [x] Multilingual UI (English + Bahasa Indonesia)
 - [ ] Receipt printing (ESC/POS, thermal) — config UI done, hardware pending
 - [ ] Inventory deduction on order
 - [ ] Multi-outlet (each terminal = outlet)

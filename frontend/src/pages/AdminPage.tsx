@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box, Paper, Typography, Grid, Button, IconButton, Chip,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem,
@@ -7,32 +7,30 @@ import {
   TableHead, TableRow, Snackbar,
 } from '@mui/material';
 import RestaurantIcon from '@mui/icons-material/Restaurant';
-import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
-import ReceiptIcon from '@mui/icons-material/Receipt';
-import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
+import WarningIcon from '@mui/icons-material/Warning';
+import PrintOutlinedIcon from '@mui/icons-material/PrintOutlined';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import StorageIcon from '@mui/icons-material/Storage';
+import RestoreIcon from '@mui/icons-material/Restore';
+import SoupKitchenIcon from '@mui/icons-material/SoupKitchen';
+import LocalBarIcon from '@mui/icons-material/LocalBar';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import RestaurantMenuIcon from '@mui/icons-material/RestaurantMenu';
 import TableRestaurantIcon from '@mui/icons-material/TableRestaurant';
 import PeopleIcon from '@mui/icons-material/People';
-import CategoryIcon from '@mui/icons-material/Category';
 import BarChartIcon from '@mui/icons-material/BarChart';
-import SoupKitchenIcon from '@mui/icons-material/SoupKitchen';
-import LocalBarIcon from '@mui/icons-material/LocalBar';
 import SearchIcon from '@mui/icons-material/Search';
 import TuneIcon from '@mui/icons-material/Tune';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
-import StorageIcon from '@mui/icons-material/Storage';
 import RefreshIcon from '@mui/icons-material/Refresh';
-import RestoreIcon from '@mui/icons-material/Restore';
 import DownloadIcon from '@mui/icons-material/Download';
 import UploadIcon from '@mui/icons-material/Upload';
 import PercentIcon from '@mui/icons-material/Percent';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import WarningIcon from '@mui/icons-material/Warning';
-import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from 'recharts';
 import { Admin, Orders, Settings, Reports, Discount, type SettingsPayload, type DiscountPreset, type DiscountPolicy } from '../lib/api';
@@ -58,10 +56,9 @@ const SHAPE = {
 // Each main-menu entry owns one color. The color carries through the
 // column-1 icon, the column-2 selected item, the column-3 accent bar,
 // and the dialog Save button.
-type MainKey = 'stats' | 'reports' | 'users' | 'products' | 'tables' | 'taxdiscounts';
+type MainKey = 'reports' | 'users' | 'products' | 'tables' | 'taxdiscounts';
 
 const MAIN_COLOR: Record<MainKey, string> = {
-  stats: '#6b46d3',
   reports: '#6b46d3',
   users: '#6b46d3',
   products: '#e07b1a',
@@ -76,7 +73,6 @@ interface MainItem {
 }
 
 const MAIN_ITEMS: MainItem[] = [
-  { key: 'stats', label: 'Stats', icon: <BarChartIcon /> },
   { key: 'reports', label: 'Reports', icon: <BarChartIcon /> },
   { key: 'users', label: 'Users', icon: <PeopleIcon /> },
   { key: 'products', label: 'Products', icon: <RestaurantMenuIcon /> },
@@ -157,11 +153,11 @@ function ListItemButton({
         cursor: 'pointer',
         borderBottom: '1px solid',
         borderColor: 'border.soft',
-        bgcolor: active ? `${color}14` : 'transparent',
-        borderLeft: accent ? '3px solid' : '3px solid transparent',
+        bgcolor: active ? `${color}33` : 'transparent',
+        borderLeft: accent ? '4px solid' : '4px solid transparent',
         borderLeftColor: accent ? color : 'transparent',
         transition: 'background-color 0.1s',
-        '&:hover': { bgcolor: active ? `${color}1f` : 'surface.muted' },
+        '&:hover': { bgcolor: active ? `${color}44` : 'surface.muted' },
         '&:focus-visible': { outline: `2px solid ${color}`, outlineOffset: -2 },
       }}
     >
@@ -182,7 +178,7 @@ function ListItemButton({
         </Box>
       )}
       <Box sx={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
-        <Typography sx={{ fontWeight: active ? 700 : 600, lineHeight: 1.2, color: 'text.primary', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <Typography sx={{ fontWeight: active ? 700 : 600, lineHeight: 1.2, color: active ? color : 'text.primary', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {label}
         </Typography>
         {sublabel && (
@@ -212,7 +208,7 @@ function ColumnEmpty({ message }: { message: string }) {
 // MAIN PAGE
 // ─────────────────────────────────────────────────────────────────────
 export default function AdminPage() {
-  const [main, setMain] = useState<MainKey>('stats');
+  const [main, setMain] = useState<MainKey>('reports');
   const [stats, setStats] = useState({ today_orders: 0, today_revenue: 0, open_tickets: 0, avg_ticket: 0 });
 
   const reloadStats = () => {
@@ -298,11 +294,8 @@ export default function AdminPage() {
         <Divider orientation="vertical" flexItem />
 
         {/* COLUMN 2+ — chosen workspace */}
-        {main === 'stats' && (
-          <StatsWorkspace color={color} stats={stats} />
-        )}
         {main === 'reports' && (
-          <ReportsWorkspace color={color} />
+          <ReportsWorkspace color={color} stats={stats} />
         )}
         {main === 'users' && (
           <UsersWorkspace color={color} />
@@ -323,73 +316,23 @@ export default function AdminPage() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// STATS WORKSPACE — 1 column (no sub-menu needed)
-// ─────────────────────────────────────────────────────────────────────
-function StatsWorkspace({ color, stats }: { color: string; stats: any }) {
-  return (
-    <Box sx={{ flex: 1, overflowY: 'auto', p: 3 }}>
-      <ColumnHeader title="TODAY" color={color} />
-      <Box sx={{ p: 3 }}>
-        <Grid container spacing={2}>
-          <Grid item xs={12} sm={6} md={3}>
-            <StatCard title="Orders" value={stats.today_orders} icon={<ReceiptIcon />} color={MAIN_COLOR.users} />
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <StatCard title="Revenue" value={`$${stats.today_revenue.toFixed(2)}`} icon={<AttachMoneyIcon />} color={MAIN_COLOR.products} />
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <StatCard title="Open Tickets" value={stats.open_tickets} icon={<HourglassEmptyIcon />} color="#e07b1a" />
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <StatCard title="Avg. Ticket" value={`$${stats.avg_ticket.toFixed(2)}`} icon={<RestaurantIcon />} color={MAIN_COLOR.stats} />
-          </Grid>
-        </Grid>
-      </Box>
-    </Box>
-  );
-}
-
-function StatCard({ title, value, icon, color }: { title: string; value: any; icon: React.ReactNode; color: string }) {
-  return (
-    <Paper
-      sx={{
-        p: 2.5,
-        borderRadius: `${SHAPE.card}px`,
-        borderTop: '4px solid',
-        borderTopColor: color,
-        height: '100%',
-      }}
-    >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color }}>
-        {icon}
-        <Typography variant="overline" sx={{ fontWeight: 700 }}>
-          {title}
-        </Typography>
-      </Box>
-      <Typography variant="h3" sx={{ fontWeight: 700, mt: 1, lineHeight: 1 }}>
-        {value}
-      </Typography>
-    </Paper>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
 // REPORTS WORKSPACE — sales, items, payments, bills with pie charts
 // ─────────────────────────────────────────────────────────────────────
 type ReportPeriod = 'day' | 'week' | 'month' | 'all' | 'custom';
 type ReportStatus = 'all' | 'paid' | 'cancelled' | 'open' | 'accepted' | 'preparing' | 'ready' | 'served';
-type ReportTab = 'sales' | 'items' | 'payments' | 'bills';
+type ReportTab = 'stats' | 'sales' | 'items' | 'payments' | 'bills';
 
 const REPORT_TABS: { key: ReportTab; label: string }[] = [
+  { key: 'stats', label: 'Stats' },
   { key: 'sales', label: 'Sales Summary' },
   { key: 'items', label: 'Item Sales' },
   { key: 'payments', label: 'Payment Methods' },
   { key: 'bills', label: 'Bill History' },
 ];
 
-function ReportsWorkspace({ color }: { color: string }) {
+function ReportsWorkspace({ color, stats }: { color: string; stats: any }) {
   const [period, setPeriod] = useState<ReportPeriod>('all');
-  const [tab, setTab] = useState<ReportTab>('sales');
+  const [tab, setTab] = useState<ReportTab>('stats');
   const [customStart, setCustomStart] = useState<string>('');
   const [customEnd, setCustomEnd] = useState<string>('');
   const [billStatus, setBillStatus] = useState<ReportStatus>('all');
@@ -399,6 +342,11 @@ function ReportsWorkspace({ color }: { color: string }) {
   const [itemSales, setItemSales] = useState<any[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
   const [billHistory, setBillHistory] = useState<any[]>([]);
+  const [expandedBill, setExpandedBill] = useState<number | null>(null);
+  const [voiding, setVoiding] = useState(false);
+  const [voidingBill, setVoidingBill] = useState<number | null>(null);
+  const [voidReason, setVoidReason] = useState('');
+  const [voidError, setVoidError] = useState<string | null>(null);
 
   const loadReports = async () => {
     setLoading(true);
@@ -576,6 +524,37 @@ function ReportsWorkspace({ color }: { color: string }) {
             </Box>
           ) : (
             <>
+              {tab === 'stats' && (
+                <Box>
+                  <Typography variant="h6" sx={{ mb: 2, fontWeight: 700 }}>Today's Stats</Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <Paper sx={{ p: 2.5, borderTop: `4px solid ${color}` }}>
+                        <Typography variant="overline" sx={{ color: 'text.secondary' }}>Orders</Typography>
+                        <Typography variant="h4" sx={{ fontWeight: 700 }}>{stats.today_orders}</Typography>
+                      </Paper>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <Paper sx={{ p: 2.5, borderTop: `4px solid #00b894` }}>
+                        <Typography variant="overline" sx={{ color: 'text.secondary' }}>Revenue</Typography>
+                        <Typography variant="h4" sx={{ fontWeight: 700 }}>${stats.today_revenue.toFixed(2)}</Typography>
+                      </Paper>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <Paper sx={{ p: 2.5, borderTop: `4px solid #e07b1a` }}>
+                        <Typography variant="overline" sx={{ color: 'text.secondary' }}>Open Tickets</Typography>
+                        <Typography variant="h4" sx={{ fontWeight: 700 }}>{stats.open_tickets}</Typography>
+                      </Paper>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <Paper sx={{ p: 2.5, borderTop: `4px solid ${color}` }}>
+                        <Typography variant="overline" sx={{ color: 'text.secondary' }}>Avg. Ticket</Typography>
+                        <Typography variant="h4" sx={{ fontWeight: 700 }}>${stats.avg_ticket.toFixed(2)}</Typography>
+                      </Paper>
+                    </Grid>
+                  </Grid>
+                </Box>
+              )}
               {tab === 'sales' && salesSummary && (
                 <Box>
                   {/* Summary Cards */}
@@ -759,6 +738,7 @@ function ReportsWorkspace({ color }: { color: string }) {
                     <Table size="small" stickyHeader>
                       <TableHead>
                         <TableRow>
+                          <TableCell />
                           <TableCell sx={{ fontWeight: 700 }}>#</TableCell>
                           <TableCell sx={{ fontWeight: 700 }}>Table/Customer</TableCell>
                           <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
@@ -768,30 +748,161 @@ function ReportsWorkspace({ color }: { color: string }) {
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {billHistory.map((bill: any) => (
-                          <TableRow key={bill.order_id}>
-                            <TableCell>#{bill.order_number}</TableCell>
-                            <TableCell>
-                              <Typography variant="body2">{bill.table_name || '-'}</Typography>
-                              <Typography variant="caption" color="text.secondary">{bill.customer_name || '-'}</Typography>
-                            </TableCell>
-                            <TableCell>
-                              <Chip 
-                                size="small" 
-                                label={bill.status} 
-                                color={bill.status === 'paid' ? 'success' : bill.status === 'open' ? 'warning' : 'default'}
-                              />
-                            </TableCell>
-                            <TableCell sx={{ textTransform: 'capitalize' }}>{bill.payment_method || '-'}</TableCell>
-                            <TableCell align="right" sx={{ fontWeight: 600 }}>{formatCurrency(bill.total)}</TableCell>
-                            <TableCell>{new Date(bill.created_at).toLocaleTimeString()}</TableCell>
-                          </TableRow>
-                        ))}
+                        {billHistory.map((bill: any) => {
+                          const isExpanded = expandedBill === bill.order_id;
+                          return (
+                            <React.Fragment key={bill.order_id}>
+                              <TableRow
+                                hover
+                                onClick={() => setExpandedBill(isExpanded ? null : bill.order_id)}
+                                sx={{ cursor: 'pointer' }}
+                              >
+                                <TableCell>
+                                  {isExpanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+                                </TableCell>
+                                <TableCell>#{bill.order_number}</TableCell>
+                                <TableCell>
+                                  <Typography variant="body2">{bill.table_name || '-'}</Typography>
+                                  <Typography variant="caption" color="text.secondary">{bill.customer_name || '-'}</Typography>
+                                </TableCell>
+                                <TableCell>
+                                  <Chip 
+                                    size="small" 
+                                    label={bill.status} 
+                                    color={bill.status === 'paid' ? 'success' : bill.status === 'void' ? 'error' : bill.status === 'open' ? 'warning' : 'default'}
+                                  />
+                                </TableCell>
+                                <TableCell sx={{ textTransform: 'capitalize' }}>{bill.payment_method || '-'}</TableCell>
+                                <TableCell align="right" sx={{ fontWeight: 600 }}>{formatCurrency(bill.total)}</TableCell>
+                                <TableCell>{new Date(bill.created_at).toLocaleTimeString()}</TableCell>
+                              </TableRow>
+                              {isExpanded && (
+                                <TableRow>
+                                  <TableCell colSpan={7} sx={{ py: 2, bgcolor: 'surface.muted' }}>
+                                    <Box sx={{ display: 'flex', gap: 3 }}>
+                                      {/* Left: Bill Items */}
+                                      <Box sx={{ flex: 1 }}>
+                                        <Typography variant="overline" sx={{ fontWeight: 700, letterSpacing: 0.5 }}>Items</Typography>
+                                        {(bill.items || []).length === 0 ? (
+                                          <Typography variant="caption" color="text.secondary">No items</Typography>
+                                        ) : (
+                                          bill.items.map((item: any) => (
+                                            <Box key={item.id} sx={{ display: 'flex', justifyContent: 'space-between', py: 0.25 }}>
+                                              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                                {item.qty}× {item.name}
+                                              </Typography>
+                                              <Typography variant="body2" color="text.secondary">
+                                                ${(item.price * item.qty).toFixed(2)}
+                                              </Typography>
+                                            </Box>
+                                          ))
+                                        )}
+                                        {bill.discount > 0 && (
+                                          <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'border.soft' }}>
+                                            <Typography variant="caption" color="text.secondary">Discount: −${bill.discount.toFixed(2)} {bill.discount_reason || ''}</Typography>
+                                          </Box>
+                                        )}
+                                      </Box>
+                                      {/* Right: Actions — stacked Print + Void */}
+                                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, justifyContent: 'center', minWidth: 140 }}>
+                                        <Button
+                                          variant="contained"
+                                          size="small"
+                                          startIcon={<PrintOutlinedIcon />}
+                                          onClick={async (e) => {
+                                            e.stopPropagation();
+                                            try {
+                                              await Orders.printReceipt(bill.order_id);
+                                            } catch (err) {
+                                              console.error('Print failed:', err);
+                                            }
+                                          }}
+                                          disabled={bill.status === 'void'}
+                                          sx={{ borderRadius: `${SHAPE.button}px`, fontWeight: 700 }}
+                                        >
+                                          Print
+                                        </Button>
+                                        {bill.status !== 'void' ? (
+                                          <Button
+                                            variant="contained"
+                                            color="error"
+                                            size="small"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setVoidingBill(bill.order_id);
+                                              setVoiding(true);
+                                              setVoidReason('');
+                                              setVoidError(null);
+                                            }}
+                                            sx={{ borderRadius: `${SHAPE.button}px`, fontWeight: 700 }}
+                                          >
+                                            Void
+                                          </Button>
+                                        ) : (
+                                          <Chip label="Voided" color="error" size="small" sx={{ fontWeight: 700, minHeight: 32 }} />
+                                        )}
+                                      </Box>
+                                    </Box>
+                                  </TableCell>
+                                </TableRow>
+                              )}
+                            </React.Fragment>
+                          );
+                        })}
                       </TableBody>
                     </Table>
                   </TableContainer>
                 </Paper>
               )}
+
+              {/* Void Reason Dialog */}
+              <Dialog open={voiding} onClose={() => { setVoiding(false); setVoidingBill(null); }} maxWidth="xs" fullWidth>
+                <DialogTitle sx={{ fontWeight: 800 }}>Void Bill?</DialogTitle>
+                <DialogContent dividers>
+                  <TextField
+                    label="Reason (e.g. Wrong order, Mistake, Cancelled by customer)"
+                    value={voidReason}
+                    onChange={(e) => { setVoidReason(e.target.value); setVoidError(null); }}
+                    fullWidth
+                    size="small"
+                    autoFocus
+                    multiline
+                    rows={2}
+                    sx={{ mb: 1 }}
+                    placeholder="Enter a reason for voiding this bill"
+                  />
+                  {voidError && (
+                    <Typography variant="caption" color="error">{voidError}</Typography>
+                  )}
+                </DialogContent>
+                <DialogActions sx={{ p: 2, gap: 1.5 }}>
+                  <Button onClick={() => { setVoiding(false); setVoidingBill(null); }} sx={{ fontWeight: 700 }}>Cancel</Button>
+                  <Button
+                    variant="contained"
+                    color="error"
+                    onClick={async () => {
+                      if (!voidReason.trim()) {
+                        setVoidError('Reason is required');
+                        return;
+                      }
+                      if (!voidingBill) return;
+                      try {
+                        await Orders.void(voidingBill, { reason: voidReason });
+                        setVoiding(false);
+                        setVoidingBill(null);
+                        setVoidReason('');
+                        loadReports();
+                      } catch (e: any) {
+                        const detail = e?.response?.data?.detail ?? e?.message ?? 'Failed to void bill';
+                        setVoidError(typeof detail === 'string' ? detail : JSON.stringify(detail));
+                      }
+                    }}
+                    sx={{ fontWeight: 700 }}
+                  >
+                    Void
+                  </Button>
+                </DialogActions>
+              </Dialog>
             </>
           )}
         </Box>
@@ -1709,11 +1820,11 @@ function RoleRow({
         cursor: 'pointer',
         borderBottom: '1px solid',
         borderColor: 'border.soft',
-        bgcolor: active ? `${color}14` : 'transparent',
-        borderLeft: '3px solid',
+        bgcolor: active ? `${color}33` : 'transparent',
+        borderLeft: '4px solid',
         borderLeftColor: active ? color : 'transparent',
         transition: 'background-color 0.1s',
-        '&:hover': { bgcolor: active ? `${color}1f` : 'surface.muted' },
+        '&:hover': { bgcolor: active ? `${color}44` : 'surface.muted' },
         '&:focus-visible': { outline: `2px solid ${color}`, outlineOffset: -2 },
       }}
     >
@@ -1731,7 +1842,7 @@ function RoleRow({
         {label.charAt(0).toUpperCase()}
       </Box>
       <Box sx={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
-        <Typography sx={{ fontWeight: active ? 700 : 600, lineHeight: 1.2, color: 'text.primary', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <Typography sx={{ fontWeight: active ? 700 : 600, lineHeight: 1.2, color: active ? color : 'text.primary', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {label}
         </Typography>
         <Typography variant="caption" sx={{ display: 'block', color: active ? color : 'text.secondary', fontWeight: 600 }}>

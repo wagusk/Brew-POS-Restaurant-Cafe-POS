@@ -20,6 +20,7 @@ PERMISSIONS = (
     "order.cancel",      # Cancel order or item
     "order.discount",    # Apply discount at checkout
     "order.append",      # Add items to existing bill
+    "order.void",        # Void an order (admin only)
     "kitchen.serve",     # Mark kitchen items as served
     "bar.serve",         # Mark bar items as served
     # Admin privileges
@@ -53,6 +54,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "dashboard.view", "kitchen.view", "bar.view", "menu.view",
         "kitchen.serve", "bar.serve",
     },
+    # Admin/Master already have all via set(PERMISSIONS)
 }
 
 

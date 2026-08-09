@@ -210,6 +210,8 @@ export const Orders = {
   }) => api.post<Order>(`/orders/${id}/close`, payload).then((r) => r.data),
   cancel: (id: number, payload: { reason: string; item_id?: number }) =>
     api.post<Order>(`/orders/${id}/cancel`, payload).then((r) => r.data),
+  void: (id: number, payload: { reason: string }) =>
+    api.post<Order>(`/orders/${id}/void`, payload).then((r) => r.data),
   appendItems: (id: number, payload: { items: Array<{ product_id: number; qty: number; modifiers?: number[]; notes?: string }> }) =>
     api.post<Order>(`/orders/${id}/items`, payload).then((r) => r.data),
   openBill: (payload: { table_id: number; type?: string; customer_name?: string; notes?: string }) =>

@@ -182,6 +182,15 @@ class CancelOrderIn(BaseModel):
     item_id: int | None = None
 
 
+class VoidOrderIn(BaseModel):
+    """Admin voids an order (mistake, wrong order, etc.).
+
+    A voided order is excluded from all reports and displays. Cannot
+    void an already-voided order.
+    """
+    reason: str = ""
+
+
 class AppendItemsIn(BaseModel):
     """Waiter appends items to an existing (open/accepted/preparing) bill.
 

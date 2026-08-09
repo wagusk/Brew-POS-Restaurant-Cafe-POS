@@ -277,7 +277,7 @@ export default function WaiterPage() {
                     {t.seats} seats ·{' '}
                     {status === 'openbill'
                       ? `Bill #${existing!.number}`
-                      : 'Kosong'}
+                      : 'Empty'}
                   </Typography>
                 </Box>
                 <Chip

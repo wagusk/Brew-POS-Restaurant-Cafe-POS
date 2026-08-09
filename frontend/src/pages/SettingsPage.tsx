@@ -143,11 +143,11 @@ function ListItemButton({
         cursor: 'pointer',
         borderBottom: '1px solid',
         borderColor: 'border.soft',
-        bgcolor: active ? `${color}14` : 'transparent',
-        borderLeft: accent ? '3px solid' : '3px solid transparent',
+        bgcolor: active ? `${color}33` : 'transparent',
+        borderLeft: accent ? '4px solid' : '4px solid transparent',
         borderLeftColor: accent ? color : 'transparent',
         transition: 'background-color 0.1s',
-        '&:hover': { bgcolor: active ? `${color}1f` : 'surface.muted' },
+        '&:hover': { bgcolor: active ? `${color}44` : 'surface.muted' },
         '&:focus-visible': { outline: `2px solid ${color}`, outlineOffset: -2 },
       }}
     >
@@ -168,7 +168,7 @@ function ListItemButton({
         </Box>
       )}
       <Box sx={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
-        <Typography sx={{ fontWeight: active ? 700 : 600, lineHeight: 1.2, color: 'text.primary', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <Typography sx={{ fontWeight: active ? 700 : 600, lineHeight: 1.2, color: active ? color : 'text.primary', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {label}
         </Typography>
         {sublabel && (

@@ -262,13 +262,13 @@ export default function CashierPage() {
                         >
                           {isOpenBill
                             ? `${live!.status.toUpperCase()} · $${live!.total.toFixed(2)}`
-                            : `${t.seats} seats · Kosong`}
+                            : `${t.seats} seats · Empty`}
                         </Typography>
                       </Box>
                     </Box>
                     <Chip
                       size="small"
-                      label={isOpenBill ? `OpenBill · #${live!.number}` : 'Kosong'}
+                      label={isOpenBill ? `OpenBill · #${live!.number}` : 'Empty'}
                       sx={{
                         bgcolor: isOpenBill ? '#ffffff22' : 'rgba(0,0,0,0.05)',
                         color: isOpenBill ? 'common.white' : 'text.primary',

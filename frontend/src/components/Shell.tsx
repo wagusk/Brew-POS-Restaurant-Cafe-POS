@@ -1,8 +1,9 @@
 import { useState, useEffect, type ReactNode } from 'react';
-import { AppBar, Toolbar, Box, Typography, Button, Chip } from '@mui/material';
+import { AppBar, Toolbar, Box, Typography, Button, Chip, MenuItem, Select, FormControl } from '@mui/material';
 import CoffeeIcon from '@mui/icons-material/Coffee';
 import LogoutIcon from '@mui/icons-material/Logout';
 import RouterIcon from '@mui/icons-material/Router';
+import LanguageIcon from '@mui/icons-material/Language';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { logout } from '../store/authSlice';
 import { ws } from '../lib/ws';
@@ -14,6 +15,7 @@ import LocalBarIcon from '@mui/icons-material/LocalBar';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import SettingsIcon from '@mui/icons-material/Settings';
 import { hasPermission, type Permission } from '../lib/permissions';
+import { getStoredLocale, setStoredLocale, type Locale } from '../lib/i18n';
 
 // Maps a role string to its role palette key in theme.
 const roleColor = (role: string): 'cashier' | 'waiter' | 'kitchen' | 'admin' => {
@@ -44,6 +46,7 @@ export default function Shell({ children }: { children: ReactNode }) {
   const location = useLocation();
   const user = useAppSelector((s) => s.auth.user);
   const [wsOnline, setWsOnline] = useState(false);
+  const [locale, setLocale] = useState<Locale>(getStoredLocale());
 
   useEffect(() => {
     ws.connect();
@@ -56,6 +59,12 @@ export default function Shell({ children }: { children: ReactNode }) {
       clearInterval(t);
     };
   }, []);
+
+  const handleLocaleChange = (newLocale: Locale) => {
+    setLocale(newLocale);
+    setStoredLocale(newLocale);
+    window.location.reload();
+  };
 
   const handleLogout = () => {
     dispatch(logout());
@@ -117,6 +126,24 @@ export default function Shell({ children }: { children: ReactNode }) {
               }}
             />
           )}
+          <FormControl size="small" sx={{ mr: 1, minWidth: 120 }}>
+            <Select
+              value={locale}
+              onChange={(e) => handleLocaleChange(e.target.value as Locale)}
+              sx={{
+                height: 40,
+                borderRadius: '12px',
+                bgcolor: 'rgba(255,255,255,0.15)',
+                color: 'common.white',
+                '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
+                '&:hover': { bgcolor: 'rgba(255,255,255,0.25)' },
+                '& .MuiSvgIcon-root': { color: 'common.white' },
+              }}
+            >
+              <MenuItem value="en">English</MenuItem>
+              <MenuItem value="id">Bahasa Indonesia</MenuItem>
+            </Select>
+          </FormControl>
           {user && (
             <Button
               onClick={handleLogout}

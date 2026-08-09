@@ -6,14 +6,14 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.schemas import (
-    CheckoutIn, OrderOut, OrderStatusIn, StatsOut, CloseOrderIn, CancelOrderIn, OpenBillIn,
+    CheckoutIn, OrderOut, OrderStatusIn, StatsOut, CloseOrderIn, CancelOrderIn, OpenBillIn, VoidOrderIn,
 )
 from app.models import User, Order
 from app.core.security import current_user, require_role, require_permission
 from app.core.permissions import can
 from app.services import (
     submit_order, list_orders, get_order, update_order_status, to_order_out,
-    today_stats, accept_order, close_order, cancel_order, append_items, open_bill,
+    today_stats, accept_order, close_order, cancel_order, append_items, open_bill, void_order,
 )
 from app.schemas import AppendItemsIn
 from app.ws import manager
@@ -298,6 +298,23 @@ async def cancel_endpoint(
         "order_cancelled" if payload.item_id is None else "order_item_cancelled",
         out.model_dump(),
     )
+    return out
+
+
+@router.post("/{order_id}/void", response_model=OrderOut)
+async def void_endpoint(
+    order_id: int,
+    payload: VoidOrderIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("order.void")),
+):
+    """Admin voids an order. Status -> 'void'. Excluded from all reports."""
+    try:
+        order = void_order(db, order_id, payload.reason, user)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    out = to_order_out(order)
+    await manager.broadcast("order_updated", out.model_dump())
     return out
 
 
