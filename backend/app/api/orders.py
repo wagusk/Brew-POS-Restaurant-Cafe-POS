@@ -2,6 +2,7 @@
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -256,6 +257,15 @@ async def close_endpoint(order_id: int, payload: CloseOrderIn, db: Session = Dep
     except ValueError as e:
         raise HTTPException(400, str(e))
 
+    # M20-empty — close_order returns None when the bill was empty and
+    # deleted entirely (no record kept).
+    if order is None:
+        await manager.broadcast("order_deleted", {"order_id": order_id})
+        return JSONResponse(
+            {"detail": "Empty bill deleted — no record kept", "order_id": order_id},
+            status_code=200,
+        )
+
     # 5. Max-cap guard for non-admin cashiers using the preset path.
     if order.discount > 0 and user.role != "admin":
         policy = get_discount_policy()
@@ -290,6 +300,16 @@ async def cancel_endpoint(
         order = cancel_order(db, order_id, payload.reason, payload.item_id)
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+    # M20-empty — cancel_order returns None when the bill was empty and
+    # deleted entirely.
+    if order is None:
+        await manager.broadcast("order_deleted", {"order_id": order_id})
+        return JSONResponse(
+            {"detail": "Empty bill deleted — no record kept", "order_id": order_id},
+            status_code=200,
+        )
+
     out = to_order_out(order)
     # Use a dedicated event so other terminals (cashier, waiter) can
     # surface a "cancelled" toast instead of treating it as a normal

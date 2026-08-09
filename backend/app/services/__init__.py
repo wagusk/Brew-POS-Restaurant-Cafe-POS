@@ -40,8 +40,17 @@ def get_tables(db: Session) -> list[Table]:
 
 
 def _next_order_number(db: Session) -> int:
-    last = db.scalar(select(func.max(Order.number))) or 0
-    return last + 1
+    """Next bill number — monotonic, never reused even if bills are deleted.
+
+    Uses a counter persisted in the settings JSON so deleted bill numbers
+    are not recycled.
+    """
+    from app.core.config import _load_persisted, _persist
+    settings = _load_persisted()
+    counter = int(settings.get("bill_number_counter", 0)) + 1
+    settings["bill_number_counter"] = counter
+    _persist(settings)
+    return counter
 
 
 def _build_item_snapshot(db: Session, ci: CartItemIn) -> tuple[OrderItem, list[OrderItemModifier]]:
@@ -244,9 +253,8 @@ def close_order(
     by the route handler before this service is called — see
     `api.orders.close_endpoint`.
 
-    M20-empty — an empty open bill (no items) can be closed directly
-    without kitchen acceptance. Records a $0 payment and frees the
-    table for reuse.
+    M20-empty — an empty open bill (no items) is DELETED entirely.
+    No record, no payment, bill number freed for reuse.
     """
     order = db.get(Order, order_id)
     if not order:
@@ -259,24 +267,10 @@ def close_order(
         )
 
     if is_empty_open:
-        # Empty bill — close with $0 payment, no kitchen flow needed
-        order.discount = 0.0
-        order.discount_reason = ""
-        order.subtotal = 0.0
-        order.tax = 0.0
-        order.total = 0.0
-        payment = Payment(
-            order=order,
-            method="cash",
-            amount=0.0,
-            tendered=0.0,
-            change=0.0,
-        )
-        order.payments.append(payment)
-        order.status = "paid"
+        # Empty bill — delete entirely, no record kept
+        db.delete(order)
         db.commit()
-        db.refresh(order)
-        return order
+        return None
 
     # Apply discount (negative amounts are silently clamped to 0)
     applied_discount = max(0.0, float(discount))
@@ -438,7 +432,7 @@ def void_order(db: Session, order_id: int, reason: str, user: User) -> Order:
     return order
 
 
-def cancel_order(db: Session, order_id: int, reason: str, item_id: int | None = None) -> Order:
+def cancel_order(db: Session, order_id: int, reason: str, item_id: int | None = None) -> Order | None:
     """Kitchen rejects an order (sold out, wrong order, etc.) or a single line item.
 
     When `item_id` is None the whole order transitions to `cancelled` and
@@ -447,10 +441,8 @@ def cancel_order(db: Session, order_id: int, reason: str, item_id: int | None = 
     cooking and the cashier bill is recomputed to exclude the rejected
     line.
 
-    The reason is recorded in `order.notes` / `item.notes` so audit logs
-    keep the explanation. The order's `status` is preserved when only an
-    item is rejected, so a partially-cancelled order still flows through
-    the rest of the kitchen pipeline normally.
+    M20-empty — cancelling an empty open bill (no items) deletes it entirely.
+    No record, no audit log — bill number freed for reuse.
     """
     order = db.get(Order, order_id)
     if not order:
@@ -459,6 +451,12 @@ def cancel_order(db: Session, order_id: int, reason: str, item_id: int | None = 
         raise ValueError(
             f"Cannot cancel order in status '{order.status}' — already paid or voided"
         )
+
+    # M20-empty: delete empty bills entirely, no record kept
+    if item_id is None and len(order.items) == 0 and order.status == "open":
+        db.delete(order)
+        db.commit()
+        return None
 
     reason = (reason or "").strip() or "sold out"
     stamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M")

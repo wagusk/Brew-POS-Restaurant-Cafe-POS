@@ -519,9 +519,7 @@ export default function CashierPage() {
         </DialogTitle>
         <DialogContent sx={{ px: 3, pb: 1 }}>
           <Typography variant="body2" color="text.secondary" align="center">
-            {emptyBillAction === 'cancel'
-              ? `Bill #${selectedBill?.number} will be cancelled and the table freed. No payment recorded.`
-              : `Bill #${selectedBill?.number} will be closed with $0 payment and the table freed.`}
+            Bill #{selectedBill?.number} will be deleted entirely — no record kept, table freed.
           </Typography>
         </DialogContent>
         <DialogActions sx={{ p: 3, gap: 2 }}>
@@ -539,12 +537,11 @@ export default function CashierPage() {
               if (!selectedBill || !emptyBillAction) return;
               try {
                 if (emptyBillAction === 'cancel') {
-                  await Orders.cancel(selectedBill.id, { reason: 'cashier cancel — empty bill' });
-                  setSnack({ msg: `Bill #${selectedBill.number} cancelled`, severity: 'success' });
+                  await Orders.cancel(selectedBill.id, { reason: 'cashier delete — empty bill' });
                 } else {
                   await Orders.close(selectedBill.id, { payment_method: 'cash', tendered: 0 });
-                  setSnack({ msg: `Bill #${selectedBill.number} closed`, severity: 'success' });
                 }
+                setSnack({ msg: `Bill #${selectedBill.number} deleted — no record kept`, severity: 'success' });
                 setEmptyBillAction(null);
                 reload();
               } catch (e: any) {
@@ -557,7 +554,7 @@ export default function CashierPage() {
             size="large"
             sx={{ borderRadius: `${SHAPE.button}px`, minHeight: 72, flex: 1, fontWeight: 700, fontSize: '1.1rem' }}
           >
-            {emptyBillAction === 'cancel' ? 'Yes, Cancel' : 'Yes, Close'}
+            Yes, Delete
           </Button>
         </DialogActions>
       </Dialog>
