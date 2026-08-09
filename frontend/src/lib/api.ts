@@ -254,6 +254,7 @@ export const Printer = {
   update: (patch: Partial<PrinterConfig>) =>
     api.put<PrinterConfig>('/admin/settings/printer', patch).then((r) => r.data),
   test: () => api.post<PrintResult>('/admin/settings/printer/test', {}).then((r) => r.data),
+  status: () => api.get<{ mode: string; dry_run: boolean }>('/api/printer/status').then((r) => r.data),
 };
 
 // ── Discount policy (M21) ───────────────────────────────────────────

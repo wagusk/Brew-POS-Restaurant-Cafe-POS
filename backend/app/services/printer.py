@@ -260,3 +260,16 @@ def auto_print_on_event(event: str, payload_bytes: bytes) -> PrintResult | None:
     if not auto.get(event):
         return None
     return print_bytes(payload_bytes)
+
+
+def get_status() -> dict[str, Any]:
+    """Return a public-safe printer status summary.
+
+    Only exposes mode + dry_run — never network host/port or USB IDs.
+    Cashier terminals poll this to render a connectivity chip.
+    """
+    cfg = _load_config()
+    return {
+        "mode": cfg.get("mode", "dummy"),
+        "dry_run": bool(cfg.get("dry_run", False)),
+    }

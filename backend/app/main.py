@@ -14,6 +14,7 @@ from app.db.session import current_engine, Base, SessionLocal
 from app.db.seed import run as run_seed
 from app.models import User as UserModel
 from app.api import auth, menu, orders, admin, settings as settings_api
+from app.services.printer import get_status as get_printer_status
 from app.ws.hub import router as ws_router
 
 
@@ -173,6 +174,15 @@ app.include_router(ws_router)
 @app.get("/health")
 def health():
     return {"ok": True, "app": settings.app_name}
+
+
+@app.get("/api/printer/status")
+def printer_status():
+    """Public printer status summary. Only exposes mode + dry_run — never
+    network host/port or USB IDs. Cashier terminals poll this to render
+    a connectivity chip.
+    """
+    return get_printer_status()
 
 
 # --- Static frontend (must be AFTER all api routes) ---

@@ -17,7 +17,7 @@ import PrintOutlinedIcon from '@mui/icons-material/PrintOutlined';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import PercentIcon from '@mui/icons-material/Percent';
 import { useAppSelector } from '../store/hooks';
-import { Orders, Discount, resolvePresetDiscount, type DiscountPolicy, type DiscountPreset } from '../lib/api';
+import { Orders, Printer, Discount, resolvePresetDiscount, type DiscountPolicy, type DiscountPreset } from '../lib/api';
 import { ws } from '../lib/ws';
 import type { Order, Table } from '../types';
 
@@ -60,6 +60,8 @@ export default function CashierPage() {
   // tendered > total, so the cashier can hand the change to the customer
   // and tap OK to acknowledge. Single OK button.
   const [changeDue, setChangeDue] = useState<{ amount: number; total: number; tendered: number } | null>(null);
+  // M20 — Printer status chip. Polls /api/printer/status every 10s.
+  const [printerStatus, setPrinterStatus] = useState<{ mode: string; dry_run: boolean } | null>(null);
 
   const reload = () => {
     Orders.list().then(setBills).catch(() => {});
@@ -76,6 +78,19 @@ export default function CashierPage() {
       ) reload();
     });
     return () => { off(); };
+  }, []);
+
+  // M20 — poll printer status every 10s for the header chip.
+  useEffect(() => {
+    let active = true;
+    const poll = () => {
+      Printer.status()
+        .then((s) => { if (active) setPrinterStatus(s); })
+        .catch(() => { if (active) setPrinterStatus(null); });
+    };
+    poll();
+    const id = setInterval(poll, 10000);
+    return () => { active = false; clearInterval(id); };
   }, []);
 
   // All unpaid/active bills across every table.
@@ -161,6 +176,14 @@ export default function CashierPage() {
             sx={{ fontWeight: 700, borderRadius: `${SHAPE.chip}px` }}
           />
         )}
+        <Chip
+          icon={<PrintOutlinedIcon sx={{ fontSize: 16 }} />}
+          label={printerStatus ? `Printer: ${printerStatus.mode}${printerStatus.dry_run ? ' (dry)' : ''}` : 'Printer: checking…'}
+          color={printerStatus && printerStatus.mode !== 'dummy' ? 'success' : 'default'}
+          variant="outlined"
+          size="small"
+          sx={{ fontWeight: 700, borderRadius: `${SHAPE.chip}px` }}
+        />
       </Box>
 
       {/* 2-COLUMN BODY: floor plan (left, 70%) + bill list (right, 30%) */}

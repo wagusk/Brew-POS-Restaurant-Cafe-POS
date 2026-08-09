@@ -103,8 +103,9 @@ def build_customer_receipt(db: Session, order: Order) -> bytes:
         # header_text on load (see printer.py:99-101) but we still pass
         # the migrated lines here so the customer receipt honors whatever
         # the admin configured.
-        header_lines=[_header_text(db)] if _header_text(db) else [],
-        footer_lines=[_footer_text(db)] if _footer_text(db) else [],
+        header_lines=_header_lines(db),
+        footer_lines=_footer_lines(db),
+        cut_paper=_cut_paper(db),
     )
 
 
@@ -137,11 +138,32 @@ def _paper_width(db: Session) -> int:
     return 58 if int(paper) == 58 else 80
 
 
-def _header_text(db: Session) -> str:
+def _cut_paper(db: Session) -> bool:
     from app.services.printer import get_config
-    return (get_config().get("paper") or {}).get("header_text", "")
+    return (get_config().get("paper") or {}).get("cut_paper", True)
+
+
+def _header_text(db: Session) -> str:
+    """First header line — used by the standalone test ticket."""
+    from app.services.printer import get_config
+    lines = (get_config().get("paper") or {}).get("header_lines", [])
+    return lines[0] if lines else ""
 
 
 def _footer_text(db: Session) -> str:
+    """First footer line — kept for parity with _header_text."""
     from app.services.printer import get_config
-    return (get_config().get("paper") or {}).get("footer_text", "")
+    lines = (get_config().get("paper") or {}).get("footer_lines", [])
+    return lines[0] if lines else ""
+
+
+def _header_lines(db: Session) -> list[str]:
+    """Full multi-line header — passed to escpos for customer receipts."""
+    from app.services.printer import get_config
+    return (get_config().get("paper") or {}).get("header_lines", [])
+
+
+def _footer_lines(db: Session) -> list[str]:
+    """Full multi-line footer — passed to escpos for customer receipts."""
+    from app.services.printer import get_config
+    return (get_config().get("paper") or {}).get("footer_lines", [])

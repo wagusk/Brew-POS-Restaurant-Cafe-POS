@@ -33,13 +33,14 @@ from app.core.config import (
     get_discount_policy,
     set_discount_policy,
 )
-from app.core.security import require_role
+from app.core.security import current_user, require_role
 from app.models import User as UserModel
 from app.services.crud import count_products, count_users
 from app.services.printer import (
     DEFAULT_CONFIG as PRINTER_DEFAULTS,
     PrintResult,
     get_config as get_printer_config,
+    get_status as get_printer_status,
     print_bytes,
     update_config as update_printer_config,
 )
