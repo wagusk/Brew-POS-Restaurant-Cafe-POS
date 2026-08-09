@@ -24,11 +24,12 @@ from app.core.config import (
     BACKEND_DIR,
     DB_PATH,
     SETTINGS_FILE,
-    DEFAULT_TAX_RATE,
+    DEFAULT_TAXES,
     get_active_db_url,
     get_tax_rate,
+    get_taxes,
+    set_taxes,
     set_active_db_url,
-    set_tax_rate,
     reset_persisted_settings,
     get_discount_policy,
     set_discount_policy,
@@ -50,7 +51,19 @@ router = APIRouter(prefix="/api/admin/settings", tags=["settings"])
 
 # ── Schemas ──────────────────────────────────────────────────────────
 class TaxIn(BaseModel):
-    tax_rate: float = Field(ge=0.0, le=1.0)
+    taxes: list[dict]  # {name: str, rate: float}
+
+    @field_validator("taxes")
+    @classmethod
+    def _validate_taxes(cls, v):
+        if not v:
+            raise ValueError("At least one tax is required")
+        for tax in v:
+            if "name" not in tax or "rate" not in tax:
+                raise ValueError("Each tax must have 'name' and 'rate'")
+            if not isinstance(tax["rate"], (int, float)) or tax["rate"] < 0 or tax["rate"] > 1:
+                raise ValueError(f"Tax rate must be between 0 and 1: {tax}")
+        return v
 
 
 class DatabaseUrlIn(BaseModel):
@@ -69,6 +82,7 @@ class DatabaseUrlIn(BaseModel):
 
 class SettingsOut(BaseModel):
     tax_rate: float
+    taxes: list[dict]
     database_url: str
     default_database_url: str
     db_kind: str           # 'sqlite' | 'postgresql' | 'mysql' | 'other'
@@ -122,6 +136,7 @@ def _build_settings_out(db: Session) -> SettingsOut:
     fp = _file_path_for_sqlite(url)
     return SettingsOut(
         tax_rate=get_tax_rate(),
+        taxes=get_taxes(),
         database_url=url,
         default_database_url=f"sqlite:///{DB_PATH}",
         db_kind=_kind(url),
@@ -140,7 +155,7 @@ def get_settings(db: Session = Depends(get_db), user: UserModel = Depends(requir
 
 @router.put("/tax", response_model=SettingsOut)
 def update_tax(payload: TaxIn, db: Session = Depends(get_db), user: UserModel = Depends(require_role("admin"))):
-    set_tax_rate(payload.tax_rate)
+    set_taxes(payload.taxes)
     return _build_settings_out(db)
 
 

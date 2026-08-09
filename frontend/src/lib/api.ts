@@ -301,9 +301,15 @@ export function resolvePresetDiscount(
   return Math.max(0, Math.round(v * 100) / 100);
 }
 
-// ── Settings: tax rate + database location ────────────────────────────
+// ── Settings: taxes + database location ────────────────────────────
+export interface TaxItem {
+  name: string;
+  rate: number;
+}
+
 export interface SettingsPayload {
   tax_rate: number;
+  taxes: TaxItem[];
   database_url: string;
   default_database_url: string;
   db_kind: 'sqlite' | 'postgresql' | 'mysql' | 'other';
@@ -318,8 +324,8 @@ export interface SettingsPayload {
 
 export const Settings = {
   get: () => api.get<SettingsPayload>('/admin/settings').then((r) => r.data),
-  setTax: (tax_rate: number) =>
-    api.put<SettingsPayload>('/admin/settings/tax', { tax_rate }).then((r) => r.data),
+  setTaxes: (taxes: TaxItem[]) =>
+    api.put<SettingsPayload>('/admin/settings/tax', { taxes }).then((r) => r.data),
   setDatabase: (database_url: string) =>
     api.put<SettingsPayload>('/admin/settings/database', { database_url }).then((r) => r.data),
   reloadDatabase: () =>

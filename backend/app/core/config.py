@@ -15,7 +15,30 @@ DB_PATH = BACKEND_DIR / "brewpos.db"
 SETTINGS_FILE = Path(
     os.environ.get("BREWPOS_SETTINGS_FILE", str(BACKEND_DIR / "brewpos.settings.json"))
 )
-DEFAULT_TAX_RATE = 0.10  # 10% cafe tax — admin can change via the UI
+DEFAULT_TAX_RATE = 0.10  # legacy single-rate fallback
+DEFAULT_TAXES = [
+    {"name": "VAT", "rate": 0.10},
+    {"name": "Service", "rate": 0.05},
+]
+
+
+def get_taxes() -> list[dict]:
+    """Active taxes list from persisted settings."""
+    persisted = _load_persisted()
+    if "taxes" in persisted:
+        return persisted["taxes"]
+    return DEFAULT_TAXES
+
+
+def set_taxes(taxes: list[dict]) -> None:
+    data = _load_persisted()
+    data["taxes"] = taxes
+    _persist(data)
+
+
+def get_tax_rate() -> float:
+    """Total tax rate — sum of all active tax rates."""
+    return sum(float(t.get("rate", 0)) for t in get_taxes())
 
 # ── Discount policy defaults (M21) ──────────────────────────────────
 # `max_discount_pct` is the per-bill cap expressed as a fraction of
@@ -79,21 +102,11 @@ settings = Settings()
 
 
 # ── Public helpers used by services + endpoints ──────────────────────
-def get_tax_rate() -> float:
-    """Active tax rate, persisted > env > default."""
-    persisted = _load_persisted()
-    if "tax_rate" in persisted:
-        try:
-            return float(persisted["tax_rate"])
-        except (TypeError, ValueError):
-            pass
-    env = settings.tax_rate if hasattr(settings, "tax_rate") else DEFAULT_TAX_RATE
-    return float(env)
 
 
 def set_tax_rate(rate: float) -> None:
     data = _load_persisted()
-    data["tax_rate"] = max(0.0, min(1.0, float(rate)))
+    data["taxes"] = [{"name": "Tax", "rate": max(0.0, min(1.0, float(rate)))}]
     _persist(data)
 
 

@@ -29,7 +29,7 @@ import PrintOutlinedIcon from '@mui/icons-material/PrintOutlined';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
-import { Admin, Settings, Printer, Discount, type SettingsPayload, type PrinterConfig, type PrintResult, type DiscountPolicy, type DiscountPreset } from '../lib/api';
+import { Admin, Settings, Printer, Discount, type SettingsPayload, type PrinterConfig, type PrintResult, type DiscountPolicy, type DiscountPreset, type TaxItem } from '../lib/api';
 import type { AdminCategory, AdminProduct, AdminTable } from '../lib/api';
 
 // ─────────────────────────────────────────────────────────────────────
@@ -1348,8 +1348,7 @@ function TaxDiscountsWorkspace({ color }: { color: string }) {
   // The input accepts ANY value 0–100 (we map to the 0.0–1.0 fraction
   // the backend persists). Admin types a literal percent — no slider,
   // no quick-pick — so changing the rate is explicit, never accidental.
-  const [taxInput, setTaxInput] = useState<string>('10.00');
-  const [taxDirty, setTaxDirty] = useState(false);
+  const [taxes, setTaxes] = useState<TaxItem[]>([]);
   const [savingTax, setSavingTax] = useState(false);
 
   // ── Discount drafts ───────────────────────────────────────────────
@@ -1394,9 +1393,7 @@ function TaxDiscountsWorkspace({ color }: { color: string }) {
     Settings.get()
       .then((s) => {
         setSettings(s);
-        const taxPct = Number(s.tax_rate ?? 0) * 100;
-        setTaxInput(taxPct.toFixed(2));
-        setTaxDirty(false);
+        setTaxes((s.taxes ?? []).map((t: TaxItem) => ({ name: t.name, rate: Number(t.rate) * 100 })));
         const pol = (s as any).discount_policy ?? {
           max_discount_pct: 0.5,
           presets: [],
@@ -1486,7 +1483,6 @@ function TaxDiscountsWorkspace({ color }: { color: string }) {
       const next = await Settings.setTax(parsed / 100);
       setSettings(next);
       setTaxInput((Number(next.tax_rate ?? 0) * 100).toFixed(2));
-      setTaxDirty(false);
       setToast({ msg: `Tax saved at ${parsed.toFixed(2)}%.`, severity: 'success' });
     } catch (e: any) {
       setToast({ msg: e?.response?.data?.detail ?? 'Failed to update tax', severity: 'error' });
@@ -1565,42 +1561,64 @@ function TaxDiscountsWorkspace({ color }: { color: string }) {
           <Typography sx={{ fontWeight: 700, fontSize: '1.05rem' }}>Tax</Typography>
         </Box>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Applied to every new order at checkout. Type any rate between 0 and 100
-          (interpreted as a percent of the bill subtotal). No presets — change it
-          only when you mean to.
+          Applied to every new order at checkout. Add multiple taxes with custom
+          names and rates — they stack to calculate total tax.
         </Typography>
 
-        <TextField
-          label="Tax rate (%)"
-          type="number"
-          size="small"
-          value={taxInput}
-          onChange={(e) => { setTaxInput(e.target.value); setTaxDirty(true); }}
-          inputProps={{ min: 0, max: 100, step: 0.01 }}
-          InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
-          sx={{ width: 220, mr: 1.5 }}
-        />
-        <Box sx={{ display: 'inline-flex', gap: 1, alignItems: 'center', ml: 0.5 }}>
-          {taxDirty && (
-            <Button size="small" color="warning" onClick={() => { setTaxInput((Number(settings.tax_rate ?? 0) * 100).toFixed(2)); setTaxDirty(false); }}>
-              Discard
-            </Button>
-          )}
+        {taxes.map((tax, idx) => (
+          <Box key={idx} sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 1 }}>
+            <TextField
+              label="Name"
+              size="small"
+              value={tax.name}
+              onChange={(e) => updateTax(idx, 'name', e.target.value)}
+              placeholder="e.g. VAT, Service"
+              sx={{ width: 180 }}
+            />
+            <TextField
+              label="Rate (%)"
+              type="number"
+              size="small"
+              value={tax.rate}
+              onChange={(e) => updateTax(idx, 'rate', e.target.value)}
+              inputProps={{ min: 0, max: 100, step: 0.01 }}
+              InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
+              sx={{ width: 140 }}
+            />
+            <IconButton
+              size="small"
+              color="error"
+              onClick={() => removeTax(idx)}
+              disabled={taxes.length === 1}
+            >
+              <DeleteOutlineIcon fontSize="small" />
+            </IconButton>
+          </Box>
+        ))}
+
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mt: 1.5 }}>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<AddIcon />}
+            onClick={addTax}
+          >
+            Add Tax
+          </Button>
           <Button
             size="small"
             variant="contained"
-            disabled={!taxDirty || savingTax}
             onClick={saveTax}
             sx={{ bgcolor: color, '&:hover': { bgcolor: color, filter: 'brightness(0.9)' } }}
           >
-            {savingTax ? 'Saving…' : 'Save tax'}
+            {savingTax ? 'Saving…' : 'Save taxes'}
           </Button>
         </Box>
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
-          Preview: 10% on a $20 subtotal = <strong>$2.00</strong> tax.
+          Total tax: <strong>{taxes.reduce((sum, t) => sum + (t.rate || 0), 0).toFixed(2)}%</strong> on subtotal.
         </Typography>
-      </Paper>
 
+      </Paper>
       {/* ───── DISCOUNT PRESETS SECTION ───── */}
       <Paper sx={{ p: 2.5, borderRadius: `${SHAPE.card}px`, borderTop: '4px solid', borderTopColor: color }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
