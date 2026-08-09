@@ -572,6 +572,14 @@ $ python smoke_test_crud.py                              → 🎉 ALL CRUD SMOKE
   - Confirmation popup: title + explanation + Yes/Delete button
   - Verified end-to-end: open empty → delete → bill 404 → table freed → next bill gets next sequential number
   - Ad-hoc verifier 8/8 PASS; build clean
+- [x] Multiple taxes (2026-08-09):
+  - Backend `core/config.py`: replaced single `tax_rate` with `taxes` list (name + rate)
+  - Backend `get_tax_rate()` returns sum of all tax rates
+  - Backend `api/settings.py`: `TaxIn` schema accepts `taxes` list, `SettingsOut` includes `taxes`
+  - Frontend `api.ts`: added `TaxItem` interface, `SettingsPayload.taxes`, `Settings.setTaxes()`
+  - Frontend `SettingsPage.tsx`: Tax workspace now has CRUD for multiple taxes (add/edit/remove)
+  - Verified: 3 taxes (VAT 10%, Service 5%, Tourism 2.5%) sum to 17.5%, order tax calculated correctly
+  - Ad-hoc verifier 7/7 PASS
 - [x] M20 bill history cancelled/void (2026-08-09):
   - Backend `get_bill_history`: default view shows paid + void, cancelled bills EXCLUDED
   - Frontend `ReportStatus` type: replaced 'cancelled' with 'void'
