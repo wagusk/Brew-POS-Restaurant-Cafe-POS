@@ -178,6 +178,22 @@ or update an item:
 
 Also broadcasts `order_updated` over WebSocket.
 
+### POST /api/orders/{id}/void
+
+Admin voids an order (mistake, wrong order, etc.). Status → `void`. Totals are zeroed. Voided orders are excluded from all reports and displays. Requires `order.void` permission.
+
+**Request:**
+```json
+{
+  "reason": "Duplicate order"
+}
+```
+
+**Response 200:** OrderOut with `status: "void"`.
+
+**Errors:**
+- `400 Bad Request` — order not found or already voided
+
 ### GET /api/orders/_stats/today
 
 **Auth:** admin or cashier only.
@@ -256,17 +272,25 @@ Connect to receive real-time events.
 
 `Order.status`:
 ```
-open → preparing → ready → served → paid
+open → accepted → preparing → ready → served → paid
    ↓
   void
+   ↓
+  cancelled
 ```
 
 `OrderItem.status`:
 ```
 new → preparing → ready → served
+   ↓
+  void
+   ↓
+  cancelled
 ```
 
-The current cashier flow marks orders as `paid` immediately on checkout. To use a "send to kitchen → cook → serve → pay" flow, use the kitchen page to advance item states, then a separate "pay" action (not yet in the cashier UI — quick add).
+The cashier can **open a bill first** (empty, status=`open`), then the waiter adds items. Once all items are served, the order auto-bumps to `served`, then the cashier closes it → `paid`.
+
+Admins can void any order at any status — totals are zeroed, the order is excluded from reports.
 
 
 ---

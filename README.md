@@ -38,6 +38,9 @@ Then open `http://localhost:8000` on any terminal.
 - **Admin Panel** — Full CRUD for users, products, categories, tables, roles, tax, discounts, printer config.
 - **Database management** — URL editor, reload engine, reset & seed, export/import backup.
 - **Multilingual UI** — English and Bahasa Indonesia included. Easy to extend with new languages.
+- **Order Voiding** — Admin can void any order (mistake, wrong order). Voided orders are excluded from all reports and displays.
+- **Permission-based access** — Granular permissions (order.open, order.close, order.void, kitchen.serve, etc.) with per-user customization.
+- **Dynamic roles** — Admin can create/edit roles with custom permissions and visual identity (color, sort order).
 
 ---
 
@@ -412,6 +415,7 @@ The cashier can **open a bill first** (empty, status=`open`), then the waiter ad
 - [x] Single-bill-per-table enforcement
 - [x] Cashier "Open Bill" popup
 - [x] Multilingual UI (English + Bahasa Indonesia)
+- [x] Order voiding (admin can void any order — excluded from reports)
 - [ ] Receipt printing (ESC/POS, thermal) — config UI done, hardware pending
 - [ ] Inventory deduction on order
 - [ ] Multi-outlet (each terminal = outlet)
