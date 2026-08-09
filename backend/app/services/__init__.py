@@ -40,17 +40,21 @@ def get_tables(db: Session) -> list[Table]:
 
 
 def _next_order_number(db: Session) -> int:
-    """Next bill number — monotonic, never reused even if bills are deleted.
+    """Next bill number — reuses gaps from cancelled/deleted bills.
 
-    Uses a counter persisted in the settings JSON so deleted bill numbers
-    are not recycled.
+    Finds the lowest missing number starting from 1 so cancelled bill
+    numbers get recycled. If no gaps exist, returns MAX(number) + 1.
     """
-    from app.core.config import _load_persisted, _persist
-    settings = _load_persisted()
-    counter = int(settings.get("bill_number_counter", 0)) + 1
-    settings["bill_number_counter"] = counter
-    _persist(settings)
-    return counter
+    from sqlalchemy import select
+
+    # Get all existing bill numbers as a set
+    existing = set(db.scalars(select(Order.number)).all())
+
+    # Find the lowest missing number starting from 1
+    n = 1
+    while n in existing:
+        n += 1
+    return n
 
 
 def _build_item_snapshot(db: Session, ci: CartItemIn) -> tuple[OrderItem, list[OrderItemModifier]]:

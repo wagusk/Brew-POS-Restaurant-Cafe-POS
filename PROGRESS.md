@@ -564,7 +564,9 @@ $ python smoke_test_crud.py                              → 🎉 ALL CRUD SMOKE
 - [x] M20 empty bill delete entirely (2026-08-09):
   - Backend `close_order`: empty open bills are DELETED entirely (no record, no payment, no audit log)
   - Backend `cancel_order`: empty open bills are DELETED entirely (same path — delete, not cancel status)
-  - Backend `_next_order_number`: monotonic counter persisted in settings JSON — bill numbers NEVER reused
+  - Backend `_next_order_number`: reuses gaps from cancelled/deleted bills (lowest missing number starting from 1)
+  - Verified: bill #23 cancelled → next bill reuses #23 → no number skipping
+  - Ad-hoc verifier 7/7 PASS
   - Frontend CashierPage: empty open bills show "Cancel" (red) + "Close" (green) buttons
   - Frontend: bill has items → existing Pay Bill flow unchanged
   - Confirmation popup: title + explanation + Yes/Delete button
