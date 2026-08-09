@@ -30,7 +30,8 @@ Then open `http://localhost:8000` on any terminal.
 - **Permission-based access** — Granular permissions (order.open, order.close, order.void, kitchen.serve, etc.).
 - **Dynamic roles** — Admin can create/edit roles with custom permissions.
 - **Printer status** — Cashier header chip polls `/api/printer/status`, shows mode + dry_run indicator.
-- **Empty bill handling** — Empty open bills are deleted entirely (no record, no payment, bill numbers monotonic).
+- **Empty bill handling** — Empty open bills are deleted entirely (no record, no payment, bill numbers recycled).
+- **Bill numbers** — Cancelled bill numbers are reused on the next open bill so there are no gaps in the sequence.
 - **Stats** — Today orders, revenue, average ticket, open tickets.
 - **Reports** — Sales summary, category breakdown, item sales, payment methods, bill history (paid + void, cancelled excluded).
 - **Taxes** — Multiple taxes with custom names and rates (VAT, Service, Tourism, etc.). They stack to calculate total tax on every order. Each tax can be configured independently with any percentage.
